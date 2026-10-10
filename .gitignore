@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+
+# Google Sheets Secrets
+credentials.json
+
+# Local SQLite DB (optional if you want to keep demo data)
+# expenses.db
+
+# Flet build output
+build/
+dist/
+.flet/
+
+# IDE
+.vscode/
+.idea/
