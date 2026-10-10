@@ -13,6 +13,12 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -29,13 +35,14 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-
       - name: Build Android APK with Flet
         run: |
-          flet build apk --project-name "ExpenseFlow" --org "com.expenseflow.app"
+          flet build apk --project expenseflow --product "ExpenseFlow" --org "com.expenseflow.app" --android-permissions android.permission.INTERNET=true --output dist --yes --no-rich-output -v
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: ExpenseFlow-Android-APK
-          path: build/apk/*.apk
+          path: |
+            dist/*.apk
+            build/apk/*.apk

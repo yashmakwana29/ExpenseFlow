@@ -64,7 +64,7 @@ No need to install 15 GB of Android Studio and Android NDK on your PC! We have p
 If you have Android Studio & Java JDK 17 installed locally:
 
 ```bash
-flet build apk --project-name "ExpenseFlow" --org "com.expenseflow.app"
+flet build apk --project expenseflow --product "ExpenseFlow" --org "com.expenseflow.app"
 ```
 
 The compiled release `.apk` file will be generated in `build/apk/`.
