@@ -224,7 +224,7 @@ DEFAULT_SETTINGS = {
     "theme_mode": "dark",
     "auto_sync": "true",
     "last_sync_time": "",
-    "sheet_url": "",
+    "sheet_url": "https://docs.google.com/spreadsheets/d/1New3ozLQK5nRLoUocDJchBNquz9gsDIVBLaupZzOwcE",
 }
 
 # Theme Colors (Modern Dark / Neon accent palette)
@@ -261,4 +261,19 @@ SMTP_CONFIG = {
     "password": "yhhbjseqhpdocztq",
     "sender_name": "ExpenseFlow Security",
     "use_tls": True,
+}
+
+# Embedded Google Cloud Service Account Credentials for Standalone Mobile Sync
+GOOGLE_SERVICE_ACCOUNT_INFO = {
+    "type": "service_account",
+    "project_id": "gen-lang-client-0756788224",
+    "private_key_id": "9d3e2121d20fa3a7a4f4fc284a4203b8a180f163",
+    "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDWM2be7LAF/mk4\nZgCL6t8w9yDKEHaOskU+X5jlNsba/5VsxGV6jjYXNeEMcPGqFwNWefnl9W5Px0rz\nn6he46aXl03SDnEIcKkrsx27rCRiYCxFKCpON5ji1beV9GFzqWxOeaSYMD9sOiKg\n2kSrmd1lcoR7x6Y5KcsRLr5K+jkAoK6uLXXUTR1Ujn22HJnYM2yAiEM6XOMM+9r9\nTzwQdHqYa0h0GECayno2Zz+B85bRtl1FXb3Jfynm6/upwHHAD6x53iMRCvOGwN3P\n9In5ldcyDiQyHcVPHTsl1rEcHkF5XMQsBjKCR8xRFavQjysdEt43QTBV4XCO4zTV\nOY2EDt0FAgMBAAECggEANzuL5CG+Bd2jPiK3M1z97j9bGh+Coqr/ReUapMgqIKBU\n5HYEAMUY14VSIYYiGozSlILhWFWf+zxVbFqX7NfgxigCrg6BQP7j8FvAZ/ssap2H\n7NE9j2uwpZUcQLOCSXO/dMDTG1cdk4euFDIUEPec6iLMXKqPhx/qt+SItwasmidb\n58pl5FogAGDo7GQDyOcflbW0vP0Trbd8zKJIgc+moq+Twf6KBgm/+qIx8yKiyT/a\nstmoPObSgNUFtnUphF7c98v60QCiWj0Y9dTahAYBgllSoeMIgnhdKP1kKDeEhApZ\nIFBwjic2qlNjFuZ/pU/ZsTmzxXZtEwNQQ1bjIcJyJQKBgQDzkMhhsDEglCpptt5c\nx7utgpFDNS9p1atdcZ0/8TVUaq1ZbYMwhj+jjFe6kh5pqdG71x+D8W1N4Wjn3JpU\n7K3Gu2KmU+JLutAJLTV02wlbxuEhPxt93Y+xJWFaaQc7OdB0jACQUUIZv7Q7Gej7\ne7bQlxOETa+MLZMs1HFWiSKl+wKBgQDhItgEguFPgH6ZYL3s4gH4wc3wojaRXc4Y\nvloHVKyXtspF9MclAdZDp39x80r9cFM3wcSvgvpXpCR+tumMSF771hHkAjsKbr0E\nw75N/WkOW1ztcyxLwNvhFkeKorvwRiPP2ZBWkyEqRAepfKaKljPZIkVCPsnL4Lk4\ndEojnDQY/wKBgQDNgVuRERhiZKFkkOcNYXj47TGjgzx+D8qHDVWgneRhVaDt03jd\neGg5ljBvOtpuTNqpotj0er++9nGNMJUHEquNAo45yI0nWHgvRfXUovtCdIt/gb+w\nc0DKNr/tiLCRSDaaH4ZaPjWHhDiNpU7u4XNejBnrh6CWpd2H9berTAnwAQKBgQCo\n3P2xxIlCnFpYqJtMBej8sEDLcKAFQJrJLF1Sikw6LzxgZEzKkSoo7IVG7vkcRxfk\nBk6EZnVnLxLAiGl8cvvrYJFit9mY5Z6Y6EjhLmWSAy0cXPqohytlFNTsQ0s72SAb\nUlBU315M2WH12i0AXdDd2DqiiX3Kke/bTD4fn5Xj+QKBgH8ey7ed/3qgK5YM6p3+\nOypWgO3u+Cd5brDU0JcXhptYnM/2kZvr1GjbxWxoJ/ISAZVDFhFK4H6XUSeI4VDK\nYBPY0Zfks5Ahg1nmAlNgp483CeJpW1ptlAHRr+xTfGm4nyf5ndcBKpNgyPQd/YtO\n2VzIm/ktr80nDDeEQNrtcApY\n-----END PRIVATE KEY-----\n",
+    "client_email": "expense-tracker-anti-gravity@gen-lang-client-0756788224.iam.gserviceaccount.com",
+    "client_id": "117081423319293968722",
+    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+    "token_uri": "https://oauth2.googleapis.com/token",
+    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+    "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/expense-tracker-anti-gravity%40gen-lang-client-0756788224.iam.gserviceaccount.com",
+    "universe_domain": "googleapis.com",
 }

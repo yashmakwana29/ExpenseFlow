@@ -79,10 +79,14 @@ def test_app_components():
     assert v5 is not None, "Settings view failed"
     print("   [OK] Settings view rendered successfully")
 
-    print("4. Testing Google Sheets diagnostic check...")
+    print("5. Testing Google Sheets diagnostic check & 2-way sync...")
     mgr = sheets_service.GoogleSheetsManager()
     status = mgr.test_connection()
-    print("   [OK] Diagnostic returned safely")
+    assert status["success"] is True, f"Google Sheets connection failed: {status['message']}"
+    print(f"   [OK] Connected to Google Sheets: {status['url']}")
+
+    pushed, pulled, msg = mgr.sync_bidirectional()
+    print(f"   [OK] Bidirectional sync completed: {msg} (Pushed: {pushed}, Pulled: {pulled})")
 
     print("\nALL SYSTEM VERIFICATIONS PASSED SUCCESSFULLY!")
 

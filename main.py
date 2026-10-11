@@ -88,18 +88,23 @@ def main(page: ft.Page):
     # ------------------ Google Sheets Sync Logic ------------------
 
     def perform_background_sync(saved_item=None):
-        """Asynchronously syncs unsynced expenses to Google Sheets in background."""
+        """Asynchronously syncs expenses to/from Google Sheets in background."""
         def sync_worker():
             try:
-                count, msg = sheets_manager.sync_all_pending()
-                if count > 0:
+                pushed, pulled, msg = sheets_manager.sync_bidirectional()
+                if pushed > 0 or pulled > 0:
+                    summary_text = []
+                    if pushed > 0:
+                        summary_text.append(f"Uploaded {pushed}")
+                    if pulled > 0:
+                        summary_text.append(f"Downloaded {pulled}")
                     page.show_dialog(
                         ft.SnackBar(
-                            content=ft.Text(f"Google Sheets: Synced {count} new expense(s)!"),
+                            content=ft.Text(f"Google Sheets: {', '.join(summary_text)} expense(s) synced!"),
                             bgcolor=ModernPalette.SUCCESS,
                         )
                     )
-                    # Refresh active screen to update sync badges
+                    # Refresh active screen to update sync badges & list
                     navigate_to(current_view_name)
             except Exception as e:
                 # Silently catch; expense remains safely stored locally
@@ -117,13 +122,13 @@ def main(page: ft.Page):
                         tight=True,
                         controls=[
                             ft.ProgressRing(width=16, height=16, stroke_width=2, color=ft.Colors.WHITE),
-                            ft.Text("Connecting to Google Sheets..."),
+                            ft.Text("Syncing with Google Sheets (2-Way)..."),
                         ]
                     ),
                     bgcolor=ModernPalette.PRIMARY,
                 )
             )
-            count, msg = sheets_manager.sync_all_pending()
+            pushed, pulled, msg = sheets_manager.sync_bidirectional()
             has_error = "error" in msg.lower() or "failed" in msg.lower() or "not found" in msg.lower()
             page.show_dialog(
                 ft.SnackBar(
@@ -276,9 +281,16 @@ def main(page: ft.Page):
         page.navigation_bar = None
         navigate_to("auth")
 
-    # If first launch with 0 items, seed demo data for instant delight
-    if len(database.get_expenses(limit=1)) == 0:
-        database.seed_sample_data()
+    # Initial startup sync: pull latest expenses from Google Sheets in background
+    def startup_sync_task():
+        try:
+            pushed, pulled, _ = sheets_manager.sync_bidirectional()
+            if pulled > 0 or pushed > 0:
+                navigate_to(current_view_name)
+        except Exception:
+            pass
+
+    threading.Thread(target=startup_sync_task, daemon=True).start()
 
 if __name__ == "__main__":
     # Support Flet 1.0 (ft.run) and backwards compatible (ft.app)

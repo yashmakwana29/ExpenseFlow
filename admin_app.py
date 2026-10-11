@@ -4,9 +4,11 @@ Provides full administrative management for registered users, password resets,
 account activation/deactivation, role assignments, and live metric tracking.
 Runs natively on desktop/laptop with Flet.
 """
+import threading
 import secrets
 import flet as ft
 import database
+import sheets_service
 import email_service
 from config import ModernPalette, APP_NAME, APP_VERSION
 
@@ -479,6 +481,41 @@ def main(page: ft.Page):
         border=ft.Border.all(1, ModernPalette.CARD_BORDER),
     )
 
+    def handle_admin_sync(_):
+        def worker():
+            page.show_dialog(
+                ft.SnackBar(
+                    content=ft.Row(
+                        spacing=8,
+                        tight=True,
+                        controls=[
+                            ft.ProgressRing(width=16, height=16, stroke_width=2, color=ft.Colors.WHITE),
+                            ft.Text("Synchronizing Database with Google Sheets..."),
+                        ]
+                    ),
+                    bgcolor=ModernPalette.PRIMARY,
+                )
+            )
+            try:
+                mgr = sheets_service.GoogleSheetsManager()
+                pushed, pulled, msg = mgr.sync_bidirectional()
+                has_err = "error" in msg.lower() or "failed" in msg.lower()
+                page.show_dialog(
+                    ft.SnackBar(
+                        content=ft.Text(msg),
+                        bgcolor=ModernPalette.DANGER if has_err else ModernPalette.SUCCESS,
+                    )
+                )
+                load_users()
+            except Exception as e:
+                page.show_dialog(
+                    ft.SnackBar(
+                        content=ft.Text(f"Sync error: {str(e)}"),
+                        bgcolor=ModernPalette.DANGER,
+                    )
+                )
+        threading.Thread(target=worker, daemon=True).start()
+
     # Top App Bar / Header
     header = ft.Row(
         alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
@@ -515,6 +552,16 @@ def main(page: ft.Page):
                         icon_color=ModernPalette.ACCENT,
                         tooltip="Refresh user list & metrics",
                         on_click=lambda _: load_users(),
+                    ),
+                    ft.OutlinedButton(
+                        "Sync Cloud Sheets",
+                        icon=ft.Icons.CLOUD_SYNC_ROUNDED,
+                        style=ft.ButtonStyle(
+                            color=ModernPalette.SUCCESS,
+                            shape=ft.RoundedRectangleBorder(radius=12),
+                            padding=ft.Padding.symmetric(horizontal=14, vertical=12),
+                        ),
+                        on_click=handle_admin_sync,
                     ),
                     ft.FilledButton(
                         "+ Add New User",

@@ -229,13 +229,13 @@ def build_settings_view(page: ft.Page, on_navigate, on_sync_request, on_logout=N
                     tight=True,
                     controls=[
                         ft.ProgressRing(width=16, height=16, stroke_width=2, color=ft.Colors.WHITE),
-                        ft.Text("Syncing MySQL records to Google Sheets..."),
+                        ft.Text("Synchronizing DB & Google Sheets (2-Way)..."),
                     ]
                 ),
                 bgcolor=ModernPalette.PRIMARY,
             )
         )
-        newly_synced, total_db, msg = mgr.sync_all_db_records()
+        pushed, pulled, msg = mgr.sync_bidirectional()
         has_error = "error" in msg.lower() or "failed" in msg.lower()
         page.show_dialog(
             ft.SnackBar(
@@ -296,7 +296,7 @@ def build_settings_view(page: ft.Page, on_navigate, on_sync_request, on_logout=N
                     spacing=8,
                     controls=[
                         ft.FilledButton(
-                            "Sync DB ➔ Google Sheets",
+                            "2-Way Cloud Sync",
                             icon=ft.Icons.CLOUD_SYNC,
                             style=ft.ButtonStyle(bgcolor=ModernPalette.SUCCESS, color=ft.Colors.WHITE),
                             on_click=handle_sync_db_to_sheets,

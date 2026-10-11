@@ -51,44 +51,51 @@ class GoogleSheetsManager:
         self.client: Optional[gspread.Client] = None
         self.spreadsheet: Optional[gspread.Spreadsheet] = None
 
-    def get_service_account_email(self) -> Optional[str]:
-        """Read the client_email from the credentials file without making a network call."""
-        if not os.path.exists(self.credentials_path):
-            return None
+    def _get_credentials_data(self) -> Optional[Dict[str, Any]]:
+        """Resolves Service Account credentials either from local file or embedded app config."""
+        # Check local file first if present
+        if self.credentials_path and os.path.exists(self.credentials_path):
+            try:
+                with open(self.credentials_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    if data.get("project_id") and data.get("private_key") and "example_key" not in data.get("private_key", "").lower():
+                        return data
+            except Exception:
+                pass
+
+        # Fall back to embedded credentials in config.py (ideal for packaged Android APKs)
         try:
-            with open(self.credentials_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                return data.get("client_email")
+            from config import GOOGLE_SERVICE_ACCOUNT_INFO
+            if GOOGLE_SERVICE_ACCOUNT_INFO and GOOGLE_SERVICE_ACCOUNT_INFO.get("private_key"):
+                return GOOGLE_SERVICE_ACCOUNT_INFO
         except Exception:
-            return None
+            pass
+        return None
+
+    def get_service_account_email(self) -> Optional[str]:
+        """Read the client_email from the resolved credentials without making a network call."""
+        data = self._get_credentials_data()
+        return data.get("client_email") if data else None
 
     def connect(self) -> Tuple[bool, str]:
         """
         Authenticate with Google Sheets API and open or create the spreadsheet.
         Returns: (success_bool, message_str)
         """
-        if not os.path.exists(self.credentials_path):
+        creds_json = self._get_credentials_data()
+        if not creds_json:
             return (
                 False,
-                f"Credentials file '{self.credentials_path}' not found.\n"
-                "Please place your Google Cloud Service Account JSON key in the project root."
+                "Google Cloud Service Account credentials not found.\n"
+                "Please configure credentials in config.py or place credentials.json in the project root."
             )
 
         try:
-            with open(self.credentials_path, "r", encoding="utf-8") as f:
-                creds_json = json.load(f)
-            
-            if "project_id" not in creds_json or "private_key" not in creds_json:
-                return False, "Invalid service account file: missing project_id or private_key."
-            
-            if "example_key" in creds_json.get("private_key", "").lower():
-                return False, "Credentials file is still a template! Please download your actual service account key from Google Cloud Console."
-
-            creds = Credentials.from_service_account_file(self.credentials_path, scopes=SCOPES)
+            creds = Credentials.from_service_account_info(creds_json, scopes=SCOPES)
             self.client = gspread.authorize(creds)
 
-            # Try to open existing spreadsheet by URL, Key, or Title
-            sheet_target = self.sheet_name.strip()
+            # Try to open existing spreadsheet by URL first, then title
+            sheet_target = database.get_setting("sheet_url", "").strip() or self.sheet_name.strip()
             self.spreadsheet = None
 
             if sheet_target.startswith("https://") or "docs.google.com/spreadsheets" in sheet_target:
@@ -100,22 +107,32 @@ class GoogleSheetsManager:
                 try:
                     self.spreadsheet = self.client.open(sheet_target)
                 except gspread.exceptions.SpreadsheetNotFound:
-                    # Try creating new one
+                    # Check default URL fallback
                     try:
-                        self.spreadsheet = self.client.create(sheet_target)
-                    except Exception as ex:
-                        if "quota has been exceeded" in str(ex).lower():
-                            return (
-                                False,
-                                "Google Service Accounts do not have personal Google Drive storage.\n"
-                                "To fix this:\n"
-                                "1. Open Google Sheets (https://sheets.new) and create a new sheet.\n"
-                                f"2. Click 'Share' and add this email as 'Editor':\n   {self.get_service_account_email()}\n"
-                                f"3. Name the sheet '{sheet_target}' (or paste its full URL into settings)."
-                            )
-                        raise ex
+                        from config import DEFAULT_SETTINGS
+                        default_url = DEFAULT_SETTINGS.get("sheet_url", "")
+                        if default_url:
+                            self.spreadsheet = self.client.open_by_url(default_url)
+                    except Exception:
+                        pass
 
-            # Update saved sheet URL
+                    if not self.spreadsheet:
+                        # Try creating new one
+                        try:
+                            self.spreadsheet = self.client.create(sheet_target)
+                        except Exception as ex:
+                            if "quota has been exceeded" in str(ex).lower():
+                                return (
+                                    False,
+                                    "Google Service Accounts do not have personal Google Drive storage.\n"
+                                    "To fix this:\n"
+                                    "1. Open Google Sheets (https://sheets.new) and create a new sheet.\n"
+                                    f"2. Click 'Share' and add this email as 'Editor':\n   {self.get_service_account_email()}\n"
+                                    f"3. Name the sheet '{sheet_target}' (or paste its full URL into settings)."
+                                )
+                            raise ex
+
+            # Update saved sheet URL and title
             if self.spreadsheet:
                 database.set_setting("sheet_url", self.spreadsheet.url)
                 database.set_setting("sheet_name", self.spreadsheet.title)
@@ -427,6 +444,142 @@ class GoogleSheetsManager:
         except Exception as e:
             return 0, len(all_expenses), f"Sync error: {str(e)}"
 
+    def pull_from_sheets_to_db(self) -> Tuple[int, str]:
+        """
+        Pulls all expense records from Google Sheets Expenses_Log worksheet
+        and saves any missing records into the local database (MySQL or SQLite).
+        Returns: (new_records_count, status_message)
+        """
+        if not self.spreadsheet:
+            connected, msg = self.connect()
+            if not connected:
+                return 0, msg
+
+        try:
+            log_sheet = self.spreadsheet.worksheet("Expenses_Log")
+            rows = log_sheet.get_all_values()
+            if not rows or len(rows) <= 1:
+                return 0, "No expense records found in Google Sheet."
+
+            headers = [str(h).strip().lower() for h in rows[0]]
+
+            # Map headers to column indices
+            uuid_idx = -1
+            date_idx = -1
+            cat_idx = -1
+            amt_idx = -1
+            pay_idx = -1
+            desc_idx = -1
+            user_idx = -1
+
+            for idx, h in enumerate(headers):
+                if "uuid" in h: uuid_idx = idx
+                elif "date" in h: date_idx = idx
+                elif "category" in h: cat_idx = idx
+                elif "amount" in h: amt_idx = idx
+                elif "payment" in h: pay_idx = idx
+                elif "desc" in h or "notes" in h: desc_idx = idx
+                elif "user" in h: user_idx = idx
+
+            # Fallback to default positional column indices if header matching missed
+            if uuid_idx == -1: uuid_idx = 1
+            if date_idx == -1: date_idx = 2
+            if cat_idx == -1: cat_idx = 3
+            if amt_idx == -1: amt_idx = 4
+            if pay_idx == -1: pay_idx = 5
+            if desc_idx == -1: desc_idx = 6
+
+            new_count = 0
+            for row in rows[1:]:
+                if not row or len(row) <= uuid_idx:
+                    continue
+                item_uuid = row[uuid_idx].strip()
+                if not item_uuid or item_uuid.lower() == "uuid":
+                    continue
+
+                date_val = row[date_idx].strip() if len(row) > date_idx else ""
+                category_val = row[cat_idx].strip() if len(row) > cat_idx else "Other"
+
+                amount_val = 0.0
+                if len(row) > amt_idx:
+                    try:
+                        clean_amt = row[amt_idx].strip().replace(",", "").replace("₹", "").replace("$", "")
+                        amount_val = float(clean_amt) if clean_amt else 0.0
+                    except (ValueError, TypeError):
+                        amount_val = 0.0
+
+                payment_val = row[pay_idx].strip() if len(row) > pay_idx else "Cash"
+                desc_val = row[desc_idx].strip() if len(row) > desc_idx else ""
+
+                if " - " in desc_val:
+                    parts = desc_val.split(" - ", 1)
+                    title_val = parts[0].strip()
+                    notes_val = parts[1].strip()
+                else:
+                    title_val = desc_val if desc_val else category_val
+                    notes_val = ""
+
+                created_by_val = "admin"
+                if user_idx != -1 and len(row) > user_idx and row[user_idx].strip():
+                    created_by_val = row[user_idx].strip()
+                elif len(row) >= 8:
+                    candidate = row[7].strip()
+                    if not candidate.startswith("202") and "-" not in candidate:
+                        created_by_val = candidate
+
+                now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                inserted = database.upsert_expense_from_sync(
+                    uuid_str=item_uuid,
+                    title=title_val,
+                    amount=amount_val,
+                    category=category_val,
+                    payment_mode=payment_val,
+                    date=date_val,
+                    notes=notes_val,
+                    created_by=created_by_val,
+                    synced_at=now_str
+                )
+                if inserted:
+                    new_count += 1
+
+            database.set_setting("last_sync_time", datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+            return new_count, f"Downloaded {new_count} new expense(s) from Google Sheets!"
+
+        except Exception as e:
+            return 0, f"Pull sync error: {str(e)}"
+
+    def sync_bidirectional(self) -> Tuple[int, int, str]:
+        """
+        Complete 2-way data sync between local database (MySQL / SQLite) and Google Sheets:
+        1. Pushes any pending local expenses to Google Sheets.
+        2. Pulls all cloud expenses from Google Sheets into local database.
+        Returns: (pushed_count, pulled_count, status_message)
+        """
+        if not self.spreadsheet:
+            connected, msg = self.connect()
+            if not connected:
+                return 0, 0, msg
+
+        # Step 1: Push local unsynced to Google Sheets
+        pushed_count, push_msg = self.sync_all_pending()
+
+        # Step 2: Pull cloud expenses to local database
+        pulled_count, pull_msg = self.pull_from_sheets_to_db()
+
+        total = pushed_count + pulled_count
+        now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        database.set_setting("last_sync_time", now_str)
+
+        if total == 0:
+            return 0, 0, "All data is already 100% up to date with Google Sheets!"
+
+        actions = []
+        if pushed_count > 0:
+            actions.append(f"Uploaded {pushed_count} to Cloud")
+        if pulled_count > 0:
+            actions.append(f"Downloaded {pulled_count} from Cloud")
+
+        return pushed_count, pulled_count, f"Sync successful: {', '.join(actions)}!"
 
     def test_connection(self) -> Dict[str, Any]:
         """Detailed connection test returning diagnostic info."""
@@ -435,7 +588,7 @@ class GoogleSheetsManager:
             return {
                 "success": False,
                 "email": None,
-                "message": "credentials.json file not found. Please place your service account credentials file in the project folder.",
+                "message": "Google Cloud Service Account credentials not found in file or app config.",
                 "url": None
             }
 

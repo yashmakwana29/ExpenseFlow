@@ -338,6 +338,8 @@ def _init_mysql_db():
     # Populate default settings if not exists
     for key, val in DEFAULT_SETTINGS.items():
         cursor.execute("INSERT IGNORE INTO settings (`key`, value) VALUES (?, ?)", (key, str(val)))
+    # Ensure sheet_url is populated with the default URL if currently empty
+    cursor.execute("UPDATE settings SET value = ? WHERE `key` = 'sheet_url' AND (value = '' OR value IS NULL)", (DEFAULT_SETTINGS["sheet_url"],))
 
     # Populate default user (admin / admin123) if no users exist
     cursor.execute("SELECT COUNT(*) as count FROM users")
@@ -456,6 +458,8 @@ def _init_sqlite_db():
 
     for key, val in DEFAULT_SETTINGS.items():
         cursor.execute("INSERT OR IGNORE INTO settings (`key`, value) VALUES (?, ?)", (key, str(val)))
+    # Ensure sheet_url is populated with the default URL if currently empty
+    cursor.execute("UPDATE settings SET value = ? WHERE `key` = 'sheet_url' AND (value = '' OR value IS NULL)", (DEFAULT_SETTINGS["sheet_url"],))
 
     cursor.execute("SELECT COUNT(*) as count FROM users")
     if cursor.fetchone()["count"] == 0:
@@ -1009,6 +1013,70 @@ def add_expense(
         "created_at": now_str,
         "updated_at": now_str
     }
+
+def upsert_expense_from_sync(
+    uuid_str: str,
+    title: str,
+    amount: float,
+    category: str,
+    payment_mode: str,
+    date: str,
+    notes: str = "",
+    created_by: str = "admin",
+    synced_at: str = ""
+) -> bool:
+    """
+    Inserts or updates an expense pulled from Google Sheets into the local DB.
+    Guarantees idempotency via UUID matching:
+    - If record with uuid_str already exists locally, marks synced = 1 and returns False.
+    - If new, resolves category, user_id, and inserts with synced = 1, returning True.
+    """
+    clean_uuid = uuid_str.strip()
+    if not clean_uuid:
+        return False
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    # 1. Check if expense already exists locally by UUID
+    cursor.execute("SELECT id, synced FROM expenses WHERE uuid = ?", (clean_uuid,))
+    existing = cursor.fetchone()
+    if existing:
+        if not existing.get("synced"):
+            cursor.execute("UPDATE expenses SET synced = 1 WHERE uuid = ?", (clean_uuid,))
+            conn.commit()
+        conn.close()
+        return False
+
+    # 2. Resolve user_id from created_by username
+    creator = (created_by or "admin").strip()
+    cursor.execute("SELECT id FROM users WHERE LOWER(username) = LOWER(?)", (creator,))
+    user_row = cursor.fetchone()
+    user_id = user_row["id"] if user_row else 1
+
+    # 3. Ensure category exists in categories table
+    cat_clean = category.strip() if category else "Other"
+    cursor.execute("SELECT id FROM categories WHERE LOWER(`key`) = LOWER(?)", (cat_clean,))
+    if not cursor.fetchone():
+        try:
+            detected = auto_detect_category_info(cat_clean)
+            cursor.execute("""
+                INSERT INTO categories (`key`, label, icon_name, color, bg_color, is_custom)
+                VALUES (?, ?, ?, ?, ?, 1)
+            """, (detected["key"], detected["label"], detected["icon_name"], detected["color"], detected["bg_color"]))
+        except Exception:
+            pass
+
+    now_str = synced_at or datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    cursor.execute("""
+        INSERT INTO expenses (uuid, title, amount, category, payment_mode, date, notes, user_id, created_by, synced, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+    """, (clean_uuid, title.strip(), float(amount), cat_clean, payment_mode.strip() or "Cash", date.strip(), notes.strip(), user_id, creator, now_str, now_str))
+
+    conn.commit()
+    conn.close()
+    return True
 
 def update_expense(
     expense_id: int,
