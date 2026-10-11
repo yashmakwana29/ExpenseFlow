@@ -42,7 +42,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          flet build apk --project expenseflow --product "ExpenseFlow" --org "com.expenseflow.app" --arch arm64-v8a armeabi-v7a --android-permissions android.permission.INTERNET=true --output dist --yes --no-rich-output -v
+          flet build apk --project expenseflow --product "ExpenseFlow" --org "com.expenseflow.app" --module-name main --arch arm64-v8a --exclude admin_app.py --android-permissions android.permission.INTERNET=true --output dist --yes --no-rich-output -v
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
