@@ -130,14 +130,30 @@ def build_settings_view(page: ft.Page, on_navigate, on_sync_request, on_logout=N
                                 ft.Column(
                                     spacing=2,
                                     controls=[
-                                        ft.Text(user_display, size=14, weight=ft.FontWeight.BOLD, color=ModernPalette.TEXT_PRIMARY),
-                                        ft.Text(f"User ID: @{username_display}", size=11, color=ModernPalette.TEXT_MUTED),
+                                        ft.Row(
+                                            spacing=6,
+                                            controls=[
+                                                ft.Text(user_display, size=14, weight=ft.FontWeight.BOLD, color=ModernPalette.TEXT_PRIMARY),
+                                                ft.Container(
+                                                    content=ft.Text(
+                                                        "ADMIN" if (current_user and current_user.get("role") == "admin") else "USER",
+                                                        size=9,
+                                                        weight=ft.FontWeight.BOLD,
+                                                        color=ft.Colors.WHITE
+                                                    ),
+                                                    bgcolor=ModernPalette.WARNING if (current_user and current_user.get("role") == "admin") else ModernPalette.PRIMARY,
+                                                    border_radius=6,
+                                                    padding=ft.Padding.symmetric(horizontal=6, vertical=2),
+                                                ),
+                                            ]
+                                        ),
+                                        ft.Text(f"@{username_display} • {current_user.get('email', 'No Email') if current_user else ''}", size=11, color=ModernPalette.TEXT_MUTED),
                                     ]
                                 )
                             ]
                         ),
                         ft.Container(
-                            content=ft.Text("Logged In", size=10, weight=ft.FontWeight.BOLD, color=ModernPalette.SUCCESS),
+                            content=ft.Text("Active", size=10, weight=ft.FontWeight.BOLD, color=ModernPalette.SUCCESS),
                             bgcolor="#132E27",
                             border=ft.Border.all(1, ModernPalette.SUCCESS),
                             border_radius=10,

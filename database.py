@@ -254,10 +254,38 @@ def _init_mysql_db():
         CREATE TABLE IF NOT EXISTS users (
             id INT AUTO_INCREMENT PRIMARY KEY,
             username VARCHAR(100) UNIQUE NOT NULL,
+            email VARCHAR(150) UNIQUE,
             password_hash VARCHAR(255) NOT NULL,
             salt VARCHAR(64) NOT NULL,
             full_name VARCHAR(150),
+            role VARCHAR(20) DEFAULT 'user',
+            is_active INT DEFAULT 1,
+            email_verified INT DEFAULT 0,
             created_at VARCHAR(50) NOT NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    """)
+
+    # Ensure all user columns exist for role-based access & email OTP
+    user_alter_mysql = [
+        "ALTER TABLE users ADD COLUMN email VARCHAR(150) UNIQUE",
+        "ALTER TABLE users ADD COLUMN role VARCHAR(20) DEFAULT 'user'",
+        "ALTER TABLE users ADD COLUMN is_active INT DEFAULT 1",
+        "ALTER TABLE users ADD COLUMN email_verified INT DEFAULT 0",
+    ]
+    for q in user_alter_mysql:
+        try:
+            cursor.execute(q)
+            conn.commit()
+        except Exception:
+            pass
+
+    # OTP Verifications Table for Registration
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS otp_verifications (
+            email VARCHAR(150) PRIMARY KEY,
+            otp_code VARCHAR(10) NOT NULL,
+            created_at VARCHAR(50) NOT NULL,
+            expires_at VARCHAR(50) NOT NULL
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     """)
 
@@ -317,9 +345,14 @@ def _init_mysql_db():
         default_salt = secrets.token_hex(16)
         default_pwd_hash = hash_password("admin123", default_salt)
         cursor.execute("""
-            INSERT INTO users (username, password_hash, salt, full_name, created_at)
-            VALUES (?, ?, ?, ?, ?)
-        """, ("admin", default_pwd_hash, default_salt, "Administrator", datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+            INSERT INTO users (username, email, password_hash, salt, full_name, role, is_active, email_verified, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, 1, 1, ?)
+        """, ("admin", "admin@expenseflow.com", default_pwd_hash, default_salt, "Administrator", "admin", datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+    else:
+        try:
+            cursor.execute("UPDATE users SET email = 'admin@expenseflow.com', role = 'admin', is_active = 1, email_verified = 1 WHERE username = 'admin' AND (role IS NULL OR role = '')")
+        except Exception:
+            pass
 
     conn.commit()
     conn.close()
@@ -334,10 +367,36 @@ def _init_sqlite_db():
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT UNIQUE NOT NULL,
+            email TEXT UNIQUE,
             password_hash TEXT NOT NULL,
             salt TEXT NOT NULL,
             full_name TEXT,
+            role TEXT DEFAULT 'user',
+            is_active INTEGER DEFAULT 1,
+            email_verified INTEGER DEFAULT 0,
             created_at TEXT NOT NULL
+        )
+    """)
+
+    user_alter_sqlite = [
+        "ALTER TABLE users ADD COLUMN email TEXT",
+        "ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user'",
+        "ALTER TABLE users ADD COLUMN is_active INTEGER DEFAULT 1",
+        "ALTER TABLE users ADD COLUMN email_verified INTEGER DEFAULT 0",
+    ]
+    for q in user_alter_sqlite:
+        try:
+            cursor.execute(q)
+            conn.commit()
+        except Exception:
+            pass
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS otp_verifications (
+            email TEXT PRIMARY KEY,
+            otp_code TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL
         )
     """)
 
@@ -419,11 +478,14 @@ def init_db():
         _init_sqlite_db()
 
 
-def create_user(username: str, password: str, full_name: str = "") -> Tuple[Optional[Dict[str, Any]], str]:
-    """Register a new user account with unique username/ID and password."""
+def create_user(username: str, email: str, password: str, full_name: str = "", role: str = "user") -> Tuple[Optional[Dict[str, Any]], str]:
+    """Register a new user account with distinct email, username, and password."""
     clean_user = username.strip()
+    clean_email = email.strip().lower()
     clean_name = full_name.strip() if full_name else clean_user
 
+    if not clean_email or "@" not in clean_email or "." not in clean_email:
+        return None, "Please enter a valid email address (e.g. name@example.com)."
     if len(clean_user) < 3:
         return None, "User ID / Username must be at least 3 characters long."
     if len(password) < 4:
@@ -432,20 +494,26 @@ def create_user(username: str, password: str, full_name: str = "") -> Tuple[Opti
     conn = get_connection()
     cursor = conn.cursor()
 
-    # Check if username exists (case-insensitive)
+    # Check if email is already registered (case-insensitive)
+    cursor.execute("SELECT id FROM users WHERE LOWER(email) = LOWER(?)", (clean_email,))
+    if cursor.fetchone():
+        conn.close()
+        return None, f"An account with email '{clean_email}' already exists. Please log in or use another email."
+
+    # Check if username is already registered (case-insensitive)
     cursor.execute("SELECT id FROM users WHERE LOWER(username) = LOWER(?)", (clean_user,))
     if cursor.fetchone():
         conn.close()
-        return None, f"User ID '{clean_user}' is already taken. Please choose another."
+        return None, f"User ID '{clean_user}' is already taken. Please choose another username."
 
     salt = secrets.token_hex(16)
     pwd_hash = hash_password(password, salt)
     now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     cursor.execute("""
-        INSERT INTO users (username, password_hash, salt, full_name, created_at)
-        VALUES (?, ?, ?, ?, ?)
-    """, (clean_user, pwd_hash, salt, clean_name, now_str))
+        INSERT INTO users (username, email, password_hash, salt, full_name, role, is_active, email_verified, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, 1, 1, ?)
+    """, (clean_user, clean_email, pwd_hash, salt, clean_name, role, now_str))
 
     user_id = cursor.lastrowid
     conn.commit()
@@ -454,19 +522,100 @@ def create_user(username: str, password: str, full_name: str = "") -> Tuple[Opti
     return {
         "id": user_id,
         "username": clean_user,
+        "email": clean_email,
         "full_name": clean_name,
+        "role": role,
+        "is_active": 1,
+        "email_verified": 1,
         "created_at": now_str,
     }, ""
 
-def authenticate_user(username: str, password: str) -> Optional[Dict[str, Any]]:
-    """Verify username & password. Returns user dict on success, None on failure."""
-    clean_user = username.strip()
-    if not clean_user or not password:
+def generate_and_send_registration_otp(email: str, username: str = "") -> Tuple[bool, str]:
+    """Generates a 6-digit OTP, stores it in database with 10-minute expiry, and emails it via Gmail SMTP."""
+    clean_email = email.strip().lower()
+    if not clean_email or "@" not in clean_email or "." not in clean_email:
+        return False, "Please enter a valid email address."
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    # Check if email is already taken
+    cursor.execute("SELECT id FROM users WHERE LOWER(email) = LOWER(?)", (clean_email,))
+    if cursor.fetchone():
+        conn.close()
+        return False, f"Email '{clean_email}' is already registered. Please sign in instead."
+
+    # Generate 6-digit OTP
+    otp_code = str(secrets.randbelow(900000) + 100000)
+    now = datetime.datetime.now()
+    expires_at = (now + datetime.timedelta(minutes=10)).strftime("%Y-%m-%d %H:%M:%S")
+    now_str = now.strftime("%Y-%m-%d %H:%M:%S")
+
+    # Store in otp_verifications
+    try:
+        if conn.is_mysql:
+            cursor.execute("""
+                INSERT INTO otp_verifications (email, otp_code, created_at, expires_at)
+                VALUES (%s, %s, %s, %s)
+                ON DUPLICATE KEY UPDATE otp_code = VALUES(otp_code), created_at = VALUES(created_at), expires_at = VALUES(expires_at)
+            """, (clean_email, otp_code, now_str, expires_at))
+        else:
+            cursor.execute("""
+                INSERT OR REPLACE INTO otp_verifications (email, otp_code, created_at, expires_at)
+                VALUES (?, ?, ?, ?)
+            """, (clean_email, otp_code, now_str, expires_at))
+        conn.commit()
+    except Exception as e:
+        conn.close()
+        return False, f"Failed to record OTP: {str(e)}"
+    finally:
+        conn.close()
+
+    # Send email via email_service
+    import email_service
+    return email_service.send_otp_email(clean_email, otp_code, username)
+
+def verify_registration_otp(email: str, entered_code: str) -> Tuple[bool, str]:
+    """Verifies that the entered 6-digit OTP matches and has not expired."""
+    clean_email = email.strip().lower()
+    clean_code = entered_code.strip()
+
+    if not clean_code or len(clean_code) != 6:
+        return False, "Please enter the 6-digit verification code sent to your email."
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT otp_code, expires_at FROM otp_verifications WHERE LOWER(email) = LOWER(?)", (clean_email,))
+    row = cursor.fetchone()
+
+    if not row:
+        conn.close()
+        return False, "No verification request found for this email. Please request a new OTP."
+
+    expires_at = row["expires_at"]
+    if datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S") > expires_at:
+        conn.close()
+        return False, "Verification code has expired. Please request a fresh OTP."
+
+    if secrets.compare_digest(str(row["otp_code"]), clean_code):
+        # Delete verified OTP
+        cursor.execute("DELETE FROM otp_verifications WHERE LOWER(email) = LOWER(?)", (clean_email,))
+        conn.commit()
+        conn.close()
+        return True, "Email address verified successfully!"
+
+    conn.close()
+    return False, "Incorrect verification code. Please check your email and try again."
+
+def authenticate_user(login_id: str, password: str) -> Optional[Dict[str, Any]]:
+    """Verify username OR email & password. Returns user dict on success, None on failure."""
+    clean_id = login_id.strip()
+    if not clean_id or not password:
         return None
 
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM users WHERE LOWER(username) = LOWER(?)", (clean_user,))
+    cursor.execute("SELECT * FROM users WHERE LOWER(username) = LOWER(?) OR LOWER(email) = LOWER(?)", (clean_id, clean_id))
     row = cursor.fetchone()
     conn.close()
 
@@ -476,30 +625,174 @@ def authenticate_user(username: str, password: str) -> Optional[Dict[str, Any]]:
     # Check password hash using constant-time comparison
     expected_hash = row["password_hash"]
     test_hash = hash_password(password, row["salt"])
-    if secrets.compare_digest(expected_hash, test_hash):
-        return {
-            "id": row["id"],
-            "username": row["username"],
-            "full_name": row["full_name"],
-            "created_at": row["created_at"],
-        }
-    return None
+    if not secrets.compare_digest(expected_hash, test_hash):
+        return None
+
+    # Check active status
+    is_act = row.get("is_active", 1)
+    if is_act is not None and int(is_act) == 0:
+        return None
+
+    return {
+        "id": row["id"],
+        "username": row["username"],
+        "email": row.get("email", ""),
+        "full_name": row["full_name"],
+        "role": row.get("role", "admin" if row["username"] == "admin" else "user"),
+        "is_active": int(is_act) if is_act is not None else 1,
+        "email_verified": int(row.get("email_verified", 0) or 0),
+        "created_at": row["created_at"],
+    }
 
 def get_user_by_id(user_id: int) -> Optional[Dict[str, Any]]:
     """Fetch user details by ID."""
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, username, full_name, created_at FROM users WHERE id = ?", (user_id,))
+    cursor.execute("SELECT id, username, email, full_name, role, is_active, email_verified, created_at FROM users WHERE id = ?", (user_id,))
     row = cursor.fetchone()
     conn.close()
     if row:
         return {
             "id": row["id"],
             "username": row["username"],
+            "email": row.get("email", ""),
             "full_name": row["full_name"],
+            "role": row.get("role", "admin" if row["username"] == "admin" else "user"),
+            "is_active": int(row.get("is_active", 1) or 1),
+            "email_verified": int(row.get("email_verified", 0) or 0),
             "created_at": row["created_at"],
         }
     return None
+
+def admin_get_all_users() -> List[Dict[str, Any]]:
+    """Fetches all registered users along with expense count and total spending metrics."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, username, email, full_name, role, is_active, email_verified, created_at FROM users ORDER BY id ASC")
+    users = cursor.fetchall()
+
+    user_list = []
+    for u in users:
+        u_id = u["id"]
+        cursor.execute("SELECT COUNT(*) as exp_count, COALESCE(SUM(amount), 0) as total_spend FROM expenses WHERE user_id = ?", (u_id,))
+        exp_row = cursor.fetchone()
+        u_dict = {
+            "id": u["id"],
+            "username": u["username"],
+            "email": u.get("email") or "N/A",
+            "full_name": u.get("full_name") or u["username"],
+            "role": u.get("role") or ("admin" if u["username"] == "admin" else "user"),
+            "is_active": int(u.get("is_active", 1) or 1),
+            "email_verified": int(u.get("email_verified", 0) or 0),
+            "created_at": u["created_at"],
+            "expenses_count": exp_row["exp_count"] if exp_row else 0,
+            "total_spend": float(exp_row["total_spend"]) if exp_row else 0.0,
+        }
+        user_list.append(u_dict)
+
+    conn.close()
+    return user_list
+
+def admin_reset_user_password(user_id: int, new_password: str, send_email: bool = True) -> Tuple[bool, str]:
+    """Admin function to reset any user's password and optionally notify them via email."""
+    if len(new_password) < 4:
+        return False, "Password must be at least 4 characters long."
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, username, email FROM users WHERE id = ?", (user_id,))
+    user = cursor.fetchone()
+
+    if not user:
+        conn.close()
+        return False, "User not found."
+
+    salt = secrets.token_hex(16)
+    pwd_hash = hash_password(new_password, salt)
+
+    cursor.execute("UPDATE users SET password_hash = ?, salt = ? WHERE id = ?", (pwd_hash, salt, user_id))
+    conn.commit()
+    conn.close()
+
+    # Notify user via email if email exists
+    email_status = ""
+    if send_email and user.get("email"):
+        import email_service
+        ok, em_msg = email_service.send_password_reset_email(user["email"], user["username"], new_password)
+        if ok:
+            email_status = f" New password was emailed to {user['email']}."
+        else:
+            email_status = f" (Email delivery note: {em_msg})"
+
+    return True, f"Password for '{user['username']}' was successfully reset!{email_status}"
+
+def admin_toggle_user_status(user_id: int, new_status: int) -> Tuple[bool, str]:
+    """Admin function to activate (1) or deactivate (0) a user account."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, username, role FROM users WHERE id = ?", (user_id,))
+    user = cursor.fetchone()
+
+    if not user:
+        conn.close()
+        return False, "User not found."
+
+    if user["username"] == "admin" and new_status == 0:
+        conn.close()
+        return False, "Cannot deactivate the primary Administrator account."
+
+    cursor.execute("UPDATE users SET is_active = ? WHERE id = ?", (new_status, user_id))
+    conn.commit()
+    conn.close()
+
+    action = "activated" if new_status == 1 else "deactivated"
+    return True, f"User '{user['username']}' has been {action}."
+
+def admin_delete_user(user_id: int) -> Tuple[bool, str]:
+    """Admin function to delete a user account and associated expenses."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, username FROM users WHERE id = ?", (user_id,))
+    user = cursor.fetchone()
+
+    if not user:
+        conn.close()
+        return False, "User not found."
+
+    if user["username"] == "admin":
+        conn.close()
+        return False, "Cannot delete the primary Administrator account."
+
+    cursor.execute("DELETE FROM expenses WHERE user_id = ?", (user_id,))
+    cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
+    conn.commit()
+    conn.close()
+
+    return True, f"User '{user['username']}' and all associated transactions have been permanently deleted."
+
+def admin_update_user_role(user_id: int, new_role: str) -> Tuple[bool, str]:
+    """Admin function to update a user's role ('admin' or 'user')."""
+    if new_role not in ["admin", "user"]:
+        return False, "Role must be either 'admin' or 'user'."
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, username FROM users WHERE id = ?", (user_id,))
+    user = cursor.fetchone()
+
+    if not user:
+        conn.close()
+        return False, "User not found."
+
+    if user["username"] == "admin" and new_role != "admin":
+        conn.close()
+        return False, "Cannot demote the primary Administrator account."
+
+    cursor.execute("UPDATE users SET role = ? WHERE id = ?", (new_role, user_id))
+    conn.commit()
+    conn.close()
+
+    return True, f"User '{user['username']}' role updated to {new_role.upper()}."
 
 def change_user_password(user_id: int, old_password: str, new_password: str) -> Tuple[bool, str]:
     """Change user password after verifying old password."""

@@ -1,15 +1,19 @@
 """
-Authentication View (User ID & Password Login / Registration) for ExpenseFlow.
-Provides modern, secure user authentication with salted PBKDF2 password hashing.
+Authentication View (User ID & Password Login / Registration with Email OTP Verification) for ExpenseFlow.
+Provides modern, secure user authentication with salted PBKDF2 password hashing and live Gmail OTP verification.
 """
+import threading
+import time
 import flet as ft
 import database
 from config import ModernPalette, APP_NAME
 
 def build_auth_view(page: ft.Page, on_login_success) -> ft.Control:
-    """Builds the mobile login and sign-up view."""
+    """Builds the mobile login and sign-up view with Email OTP verification."""
 
     is_register_mode = False
+    otp_sent = False
+    cooldown_seconds = 0
 
     # 1. Branding Header
     brand_icon = ft.Container(
@@ -45,9 +49,61 @@ def build_auth_view(page: ft.Page, on_login_success) -> ft.Control:
     )
 
     # 2. Form Inputs
+    # Email Input (Placed BEFORE User ID for registration)
+    email_input = ft.TextField(
+        label="Email ID (Verification required)",
+        hint_text="e.g. yourname@gmail.com",
+        prefix_icon=ft.Icons.EMAIL_ROUNDED,
+        border_radius=14,
+        filled=True,
+        bgcolor=ModernPalette.SURFACE_DARK,
+        border_color=ModernPalette.CARD_BORDER,
+        focused_border_color=ModernPalette.PRIMARY,
+        keyboard_type=ft.KeyboardType.EMAIL,
+        visible=False,
+    )
+
+    send_otp_btn = ft.OutlinedButton(
+        "Send OTP ✉",
+        icon=ft.Icons.MARK_EMAIL_READ_ROUNDED,
+        style=ft.ButtonStyle(
+            color=ModernPalette.ACCENT,
+            side=ft.BorderSide(1, ModernPalette.ACCENT),
+            shape=ft.RoundedRectangleBorder(radius=12),
+        ),
+        height=48,
+    )
+
+    otp_input = ft.TextField(
+        label="6-Digit Verification Code",
+        hint_text="Enter OTP from email",
+        prefix_icon=ft.Icons.KEY_ROUNDED,
+        border_radius=14,
+        filled=True,
+        bgcolor=ModernPalette.SURFACE_DARK,
+        border_color=ModernPalette.CARD_BORDER,
+        focused_border_color=ModernPalette.ACCENT,
+        keyboard_type=ft.KeyboardType.NUMBER,
+        max_length=6,
+        visible=False,
+    )
+
+    email_row = ft.Column(
+        spacing=8,
+        controls=[
+            email_input,
+            ft.Row(
+                alignment=ft.MainAxisAlignment.END,
+                controls=[send_otp_btn]
+            ),
+            otp_input,
+        ],
+        visible=False,
+    )
+
     username_input = ft.TextField(
-        label="User ID / Username",
-        hint_text="e.g. admin, alex_99, john.doe",
+        label="User ID or Email",
+        hint_text="e.g. admin, alex_99, or user@gmail.com",
         prefix_icon=ft.Icons.PERSON_ROUNDED,
         border_radius=14,
         filled=True,
@@ -102,7 +158,54 @@ def build_auth_view(page: ft.Page, on_login_success) -> ft.Control:
         fill_color=ModernPalette.PRIMARY,
     )
 
-    # 3. Mode Toggle Buttons (Sign In vs Register)
+    # 3. OTP Send Logic with Cooldown Timer
+    def handle_send_otp(e):
+        nonlocal otp_sent, cooldown_seconds
+        em_val = email_input.value.strip() if email_input.value else ""
+        if not em_val or "@" not in em_val or "." not in em_val:
+            page.show_dialog(ft.SnackBar(ft.Text("Please enter a valid email address first!"), bgcolor=ModernPalette.DANGER))
+            return
+
+        send_otp_btn.disabled = True
+        send_otp_btn.text = "Sending..."
+        page.update()
+
+        u_val = username_input.value.strip() if username_input.value else ""
+        ok, msg = database.generate_and_send_registration_otp(em_val, u_val)
+
+        if ok:
+            otp_sent = True
+            otp_input.visible = True
+            page.show_dialog(
+                ft.SnackBar(
+                    ft.Text(f"✓ Verification code sent to {em_val}! Check your inbox."),
+                    bgcolor=ModernPalette.SUCCESS
+                )
+            )
+            # Start 60s countdown timer
+            def countdown():
+                nonlocal cooldown_seconds
+                cooldown_seconds = 60
+                while cooldown_seconds > 0:
+                    send_otp_btn.text = f"Resend ({cooldown_seconds}s)"
+                    page.update()
+                    time.sleep(1)
+                    cooldown_seconds -= 1
+                send_otp_btn.text = "Resend OTP ✉"
+                send_otp_btn.disabled = False
+                page.update()
+
+            threading.Thread(target=countdown, daemon=True).start()
+        else:
+            send_otp_btn.disabled = False
+            send_otp_btn.text = "Send OTP ✉"
+            page.show_dialog(ft.SnackBar(ft.Text(msg), bgcolor=ModernPalette.DANGER))
+
+        page.update()
+
+    send_otp_btn.on_click = handle_send_otp
+
+    # 4. Mode Toggle Buttons (Sign In vs Register)
     tab_sign_in = ft.Container(
         content=ft.Text("Sign In", size=13, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
         alignment=ft.Alignment.CENTER,
@@ -124,21 +227,33 @@ def build_auth_view(page: ft.Page, on_login_success) -> ft.Control:
     def set_auth_mode(register: bool):
         nonlocal is_register_mode
         is_register_mode = register
+        email_row.visible = register
+        email_input.visible = register
         full_name_input.visible = register
         confirm_password_input.visible = register
-        
+
         if register:
             tab_sign_in.bgcolor = ft.Colors.TRANSPARENT
             tab_sign_in.content.color = ModernPalette.TEXT_MUTED
             tab_register.bgcolor = ModernPalette.PRIMARY
             tab_register.content.color = ft.Colors.WHITE
-            action_btn.text = "Create Account ➔"
+            action_btn.text = "Verify OTP & Register ➔"
+            action_btn.icon = ft.Icons.VERIFIED_USER_ROUNDED
+            username_input.label = "User ID / Username"
+            username_input.hint_text = "e.g. alex_99, john.doe (Unique)"
+            team_members_card.visible = False
+            demo_chip.visible = False
         else:
             tab_register.bgcolor = ft.Colors.TRANSPARENT
             tab_register.content.color = ModernPalette.TEXT_MUTED
             tab_sign_in.bgcolor = ModernPalette.PRIMARY
             tab_sign_in.content.color = ft.Colors.WHITE
             action_btn.text = "Sign In ➔"
+            action_btn.icon = ft.Icons.LOGIN_ROUNDED
+            username_input.label = "User ID or Email"
+            username_input.hint_text = "e.g. admin, alex_99, or user@gmail.com"
+            team_members_card.visible = True
+            demo_chip.visible = True
         page.update()
 
     tab_sign_in.on_click = lambda _: set_auth_mode(False)
@@ -154,7 +269,7 @@ def build_auth_view(page: ft.Page, on_login_success) -> ft.Control:
         )
     )
 
-    # 4. Multi-User Team Member Switcher Chips
+    # 5. Multi-User Team Member Switcher Chips
     all_users = database.get_all_users()
     team_chips_row = ft.Row(wrap=True, spacing=6, run_spacing=6)
 
@@ -169,18 +284,19 @@ def build_auth_view(page: ft.Page, on_login_success) -> ft.Control:
     for u in all_users:
         u_name = u["username"]
         disp_name = u.get("full_name") or u_name
+        is_admin_user = (u.get("role") == "admin" or u_name == "admin")
         team_chips_row.controls.append(
             ft.Container(
                 content=ft.Row(
                     tight=True,
                     spacing=5,
                     controls=[
-                        ft.Icon(ft.Icons.PERSON, size=13, color=ModernPalette.ACCENT),
+                        ft.Icon(ft.Icons.SECURITY if is_admin_user else ft.Icons.PERSON, size=13, color=ModernPalette.WARNING if is_admin_user else ModernPalette.ACCENT),
                         ft.Text(f"@{u_name}", size=11, weight=ft.FontWeight.W_600, color=ModernPalette.TEXT_PRIMARY),
                     ]
                 ),
                 bgcolor="#1E293B",
-                border=ft.Border.all(1, ModernPalette.CARD_BORDER),
+                border=ft.Border.all(1, ModernPalette.WARNING if is_admin_user else ModernPalette.CARD_BORDER),
                 border_radius=12,
                 padding=ft.Padding.symmetric(horizontal=8, vertical=5),
                 on_click=lambda _, name=u_name: select_team_member(name),
@@ -238,32 +354,46 @@ def build_auth_view(page: ft.Page, on_login_success) -> ft.Control:
         tooltip="Click to quickly fill admin credentials",
     )
 
-    # 5. Main Action Button & Handler
+    # 6. Main Action Button & Handler
     def handle_auth_submit(e):
         u_val = username_input.value.strip() if username_input.value else ""
         p_val = password_input.value if password_input.value else ""
 
-        if not u_val:
-            page.show_dialog(ft.SnackBar(ft.Text("Please enter your User ID / Username!"), bgcolor=ModernPalette.DANGER))
-            return
-        if not p_val:
-            page.show_dialog(ft.SnackBar(ft.Text("Please enter your password!"), bgcolor=ModernPalette.DANGER))
-            return
-
         if is_register_mode:
             # Registration Mode
+            em_val = email_input.value.strip().lower() if email_input.value else ""
+            otp_val = otp_input.value.strip() if otp_input.value else ""
             fn_val = full_name_input.value.strip() if full_name_input.value else u_val
             cp_val = confirm_password_input.value if confirm_password_input.value else ""
-            
+
+            if not em_val or "@" not in em_val or "." not in em_val:
+                page.show_dialog(ft.SnackBar(ft.Text("Please enter a valid email address!"), bgcolor=ModernPalette.DANGER))
+                return
+            if not otp_val or len(otp_val) != 6:
+                page.show_dialog(ft.SnackBar(ft.Text("Please enter the 6-digit OTP sent to your email! (Click 'Send OTP' if not received)"), bgcolor=ModernPalette.DANGER))
+                return
+            if not u_val:
+                page.show_dialog(ft.SnackBar(ft.Text("Please choose a User ID / Username!"), bgcolor=ModernPalette.DANGER))
+                return
+            if len(p_val) < 4:
+                page.show_dialog(ft.SnackBar(ft.Text("Password must be at least 4 characters long!"), bgcolor=ModernPalette.DANGER))
+                return
             if p_val != cp_val:
                 page.show_dialog(ft.SnackBar(ft.Text("Passwords do not match!"), bgcolor=ModernPalette.DANGER))
                 return
-            
-            new_user, err = database.create_user(u_val, p_val, fn_val)
+
+            # Verify OTP first
+            otp_ok, otp_err = database.verify_registration_otp(em_val, otp_val)
+            if not otp_ok:
+                page.show_dialog(ft.SnackBar(ft.Text(otp_err), bgcolor=ModernPalette.DANGER))
+                return
+
+            # Create User Account
+            new_user, err = database.create_user(u_val, em_val, p_val, fn_val)
             if err:
                 page.show_dialog(ft.SnackBar(ft.Text(err), bgcolor=ModernPalette.DANGER))
                 return
-            
+
             if remember_me_checkbox.value:
                 database.set_current_session_user(new_user["id"])
             else:
@@ -271,18 +401,25 @@ def build_auth_view(page: ft.Page, on_login_success) -> ft.Control:
 
             page.show_dialog(
                 ft.SnackBar(
-                    ft.Text(f"Welcome, {new_user['full_name']}! Account created successfully."),
+                    ft.Text(f"🎉 Welcome, {new_user['full_name']}! Email verified and account registered."),
                     bgcolor=ModernPalette.SUCCESS
                 )
             )
             on_login_success(new_user)
         else:
-            # Login Mode
+            # Login Mode (Supports both Username and Email)
+            if not u_val:
+                page.show_dialog(ft.SnackBar(ft.Text("Please enter your User ID or Email!"), bgcolor=ModernPalette.DANGER))
+                return
+            if not p_val:
+                page.show_dialog(ft.SnackBar(ft.Text("Please enter your password!"), bgcolor=ModernPalette.DANGER))
+                return
+
             user = database.authenticate_user(u_val, p_val)
             if not user:
                 page.show_dialog(
                     ft.SnackBar(
-                        ft.Text("Invalid User ID or Password. Please try again!"),
+                        ft.Text("Invalid User ID/Email or Password. (If your account was disabled, contact Admin)."),
                         bgcolor=ModernPalette.DANGER
                     )
                 )
@@ -293,9 +430,10 @@ def build_auth_view(page: ft.Page, on_login_success) -> ft.Control:
             else:
                 database.set_current_session_user(None)
 
+            role_badge = " [ADMIN]" if user.get("role") == "admin" else ""
             page.show_dialog(
                 ft.SnackBar(
-                    ft.Text(f"Welcome back, {user['full_name'] or user['username']}!"),
+                    ft.Text(f"Welcome back, {user['full_name'] or user['username']}{role_badge}!"),
                     bgcolor=ModernPalette.SUCCESS
                 )
             )
@@ -314,7 +452,7 @@ def build_auth_view(page: ft.Page, on_login_success) -> ft.Control:
         on_click=handle_auth_submit,
     )
 
-    # 6. Security Footer Notice
+    # Security Footer Notice
     security_badge = ft.Container(
         content=ft.Row(
             tight=True,
@@ -322,7 +460,7 @@ def build_auth_view(page: ft.Page, on_login_success) -> ft.Control:
             alignment=ft.MainAxisAlignment.CENTER,
             controls=[
                 ft.Icon(ft.Icons.SHIELD_OUTLINED, size=15, color=ModernPalette.TEXT_MUTED),
-                ft.Text("Salted PBKDF2 Encryption & Offline SQLite", size=11, color=ModernPalette.TEXT_MUTED),
+                ft.Text("Salted PBKDF2 & Real-Time SMTP Email Verification", size=11, color=ModernPalette.TEXT_MUTED),
             ]
         ),
         padding=10,
@@ -330,7 +468,7 @@ def build_auth_view(page: ft.Page, on_login_success) -> ft.Control:
 
     return ft.ListView(
         expand=True,
-        spacing=16,
+        spacing=14,
         scroll=ft.ScrollMode.AUTO,
         padding=ft.Padding.only(left=20, right=20, top=30, bottom=50),
         controls=[
@@ -348,12 +486,14 @@ def build_auth_view(page: ft.Page, on_login_success) -> ft.Control:
             ft.Container(height=6),
             # Switcher: Sign In / Create Account
             mode_switcher,
+            # Registration: Email + OTP (placed before username)
+            email_row,
             # Inputs
             username_input,
             full_name_input,
             password_input,
             confirm_password_input,
-            # Team Accounts Quick Switcher
+            # Team Accounts Quick Switcher (in Login mode)
             team_members_card,
             # Remember me & Quick Demo
             ft.Row(

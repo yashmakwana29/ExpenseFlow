@@ -252,3 +252,13 @@ MYSQL_CONFIG = {
     "database": "expenseflow_db",
 }
 USE_MYSQL = True
+
+# Email / SMTP Configuration (Gmail SMTP for Registration OTP & Admin Password Resets)
+SMTP_CONFIG = {
+    "host": "smtp.gmail.com",
+    "port": 587,
+    "user": "yashmakwana26@gmail.com",
+    "password": "yhhbjseqhpdocztq",
+    "sender_name": "ExpenseFlow Security",
+    "use_tls": True,
+}

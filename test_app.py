@@ -24,7 +24,7 @@ def test_app_components():
     print(f"   [OK] Admin account verified: {admin_user['username']} ({admin_user['full_name']})")
 
     # Test new user registration
-    test_user, err = database.create_user("testuser_demo", "securepass123", "Demo Tester")
+    test_user, err = database.create_user("testuser_demo", "testuser@demo.com", "securepass123", "Demo Tester")
     if not err:
         print(f"   [OK] User registration verified: {test_user['username']}")
     else:
