@@ -7,6 +7,29 @@ import os
 import json
 import datetime
 from typing import Dict, Any, List, Tuple, Optional
+import sys
+import types
+
+# Ensure wsgiref is available for google_auth_oauthlib on embedded platforms (Android)
+if "wsgiref" not in sys.modules:
+    try:
+        import wsgiref
+        import wsgiref.simple_server
+        import wsgiref.util
+    except ImportError:
+        _w = types.ModuleType("wsgiref")
+        _ss = types.ModuleType("wsgiref.simple_server")
+        _u = types.ModuleType("wsgiref.util")
+        _ss.WSGIServer = type("WSGIServer", (), {})
+        _ss.WSGIRequestHandler = type("WSGIRequestHandler", (), {})
+        _ss.make_server = lambda *a, **k: None
+        _u.request_uri = lambda e: ""
+        _w.simple_server = _ss
+        _w.util = _u
+        sys.modules["wsgiref"] = _w
+        sys.modules["wsgiref.simple_server"] = _ss
+        sys.modules["wsgiref.util"] = _u
+
 import gspread
 from google.oauth2.service_account import Credentials
 import database
