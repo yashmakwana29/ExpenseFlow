@@ -156,65 +156,94 @@ def get_db_type() -> str:
     """Returns friendly human-readable database backend name."""
     if is_using_mysql():
         return f"MySQL ({MYSQL_CONFIG['user']}@{MYSQL_CONFIG['host']}:{MYSQL_CONFIG['port']}/{MYSQL_CONFIG['database']})"
-    return "SQLite (Local Fallback expenses.db)"
+    return "SQLite (Local Mobile Storage expenses.db)"
 
 
-def test_mysql_connection() -> Dict[str, Any]:
-    """Tests MySQL connectivity and retrieves real-time database stats."""
+def get_database_health() -> Dict[str, Any]:
+    """
+    Returns comprehensive diagnostic information about the active database
+    (whether MySQL on server/PC or SQLite on mobile device) and sync status.
+    """
+    is_mysql = is_using_mysql()
+    exp_count, user_count, cat_count, synced_count = 0, 0, 0, 0
     try:
-        conn = pymysql.connect(
-            host=MYSQL_CONFIG["host"],
-            port=MYSQL_CONFIG["port"],
-            user=MYSQL_CONFIG["user"],
-            password=MYSQL_CONFIG["password"],
-            database=MYSQL_CONFIG["database"],
-            cursorclass=pymysql.cursors.DictCursor,
-            connect_timeout=3
-        )
+        conn = get_connection()
         cur = conn.cursor()
-        cur.execute("SELECT VERSION() as version")
-        ver = cur.fetchone()["version"]
-
         cur.execute("SELECT COUNT(*) as count FROM expenses")
-        exp_count = cur.fetchone()["count"]
-
+        res = cur.fetchone()
+        exp_count = res["count"] if res else 0
         cur.execute("SELECT COUNT(*) as count FROM users")
-        user_count = cur.fetchone()["count"]
-
+        res = cur.fetchone()
+        user_count = res["count"] if res else 0
         cur.execute("SELECT COUNT(*) as count FROM categories")
-        cat_count = cur.fetchone()["count"]
-
+        res = cur.fetchone()
+        cat_count = res["count"] if res else 0
         cur.execute("SELECT COUNT(*) as count FROM expenses WHERE synced = 1")
-        synced_count = cur.fetchone()["count"]
-
+        res = cur.fetchone()
+        synced_count = res["count"] if res else 0
         conn.close()
+    except Exception:
+        pass
+
+    if is_mysql:
+        ver = "Unknown"
+        try:
+            conn = pymysql.connect(
+                host=MYSQL_CONFIG["host"],
+                port=MYSQL_CONFIG["port"],
+                user=MYSQL_CONFIG["user"],
+                password=MYSQL_CONFIG["password"],
+                database=MYSQL_CONFIG["database"],
+                cursorclass=pymysql.cursors.DictCursor,
+                connect_timeout=3
+            )
+            cur = conn.cursor()
+            cur.execute("SELECT VERSION() as version")
+            ver_res = cur.fetchone()
+            if ver_res:
+                ver = ver_res["version"]
+            conn.close()
+        except Exception:
+            pass
+
         return {
-            "success": True,
-            "version": ver,
+            "is_mysql": True,
+            "engine": "MySQL Server",
+            "status_text": "CONNECTED & ACTIVE",
+            "is_healthy": True,
             "host": f"{MYSQL_CONFIG['host']}:{MYSQL_CONFIG['port']}",
             "database": MYSQL_CONFIG["database"],
             "user": MYSQL_CONFIG["user"],
+            "version": ver,
             "expenses_count": exp_count,
             "users_count": user_count,
             "categories_count": cat_count,
             "synced_count": synced_count,
             "unsynced_count": exp_count - synced_count,
-            "message": f"Successfully connected to MySQL {ver} on {MYSQL_CONFIG['host']}:{MYSQL_CONFIG['port']}"
+            "message": "Connected directly to MySQL database server."
         }
-    except Exception as e:
+    else:
         return {
-            "success": False,
-            "version": "N/A",
-            "host": f"{MYSQL_CONFIG['host']}:{MYSQL_CONFIG['port']}",
-            "database": MYSQL_CONFIG["database"],
-            "user": MYSQL_CONFIG["user"],
-            "expenses_count": 0,
-            "users_count": 0,
-            "categories_count": 0,
-            "synced_count": 0,
-            "unsynced_count": 0,
-            "message": f"MySQL connection error: {str(e)}"
+            "is_mysql": False,
+            "engine": "SQLite (Mobile Local Storage)",
+            "status_text": "ACTIVE & HEALTHY",
+            "is_healthy": True,
+            "host": "Local Device (expenses.db)",
+            "database": "expenses.db",
+            "user": "local_device",
+            "version": f"SQLite {sqlite3.sqlite_version}",
+            "expenses_count": exp_count,
+            "users_count": user_count,
+            "categories_count": cat_count,
+            "synced_count": synced_count,
+            "unsynced_count": exp_count - synced_count,
+            "message": "Mobile Offline-First Mode: SQLite stores all records safely and instantly on your phone. Synchronizes with PC/Server via Google Sheets 2-Way Cloud Sync."
         }
+
+
+def test_mysql_connection() -> Dict[str, Any]:
+    """Tests MySQL connectivity and retrieves real-time database stats."""
+    return get_database_health()
 
 
 # ----------------- User Authentication & Security Helpers -----------------

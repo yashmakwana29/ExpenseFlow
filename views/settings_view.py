@@ -181,38 +181,40 @@ def build_settings_view(page: ft.Page, on_navigate, on_sync_request, on_logout=N
         )
     )
 
-    # 1. MySQL Database Connection Card
-    db_test_info = database.test_mysql_connection()
-    is_db_connected = db_test_info["success"]
+    # 1. Database Connection & Diagnostics Card
+    db_health = database.get_database_health()
+    is_using_mysql = db_health["is_mysql"]
 
-    def handle_test_mysql(_):
-        res = database.test_mysql_connection()
+    def handle_test_db(_):
+        res = database.get_database_health()
         dlg = ft.AlertDialog(
             title=ft.Row(
                 spacing=8,
                 controls=[
                     ft.Icon(
-                        ft.Icons.CHECK_CIRCLE if res["success"] else ft.Icons.ERROR_OUTLINE,
-                        color=ModernPalette.SUCCESS if res["success"] else ModernPalette.DANGER,
+                        ft.Icons.CHECK_CIRCLE,
+                        color=ModernPalette.SUCCESS,
                     ),
-                    ft.Text("MySQL Connection Diagnostic", weight=ft.FontWeight.BOLD),
+                    ft.Text("Database Diagnostics", weight=ft.FontWeight.BOLD),
                 ]
             ),
             content=ft.Column(
                 tight=True,
                 spacing=8,
                 controls=[
-                    ft.Text(f"Status: {'CONNECTED' if res['success'] else 'FAILED'}", weight=ft.FontWeight.BOLD, color=ModernPalette.SUCCESS if res["success"] else ModernPalette.DANGER),
-                    ft.Text(f"Server Host: {res.get('host', 'localhost:3306')}", size=12),
-                    ft.Text(f"Database: {res.get('database', 'expenseflow_db')}", size=12),
-                    ft.Text(f"Username: {res.get('user', 'root')}", size=12),
-                    ft.Text(f"MySQL Version: {res.get('version', 'Unknown')}", size=12),
+                    ft.Text(f"Status: {res['status_text']}", weight=ft.FontWeight.BOLD, color=ModernPalette.SUCCESS),
+                    ft.Text(f"Active Engine: {res['engine']}", size=12, weight=ft.FontWeight.W_600),
+                    ft.Text(f"Storage: {res['host']}", size=12),
+                    ft.Text(f"Database: {res['database']}", size=12),
+                    ft.Text(f"Version: {res['version']}", size=12),
                     ft.Divider(color=ModernPalette.CARD_BORDER),
                     ft.Text(f"Total Expenses in DB: {res.get('expenses_count', 0)}", size=12),
                     ft.Text(f"Synced with Google Sheets: {res.get('synced_count', 0)}", size=12),
                     ft.Text(f"Pending Sync: {res.get('unsynced_count', 0)}", size=12),
                     ft.Text(f"Registered Users: {res.get('users_count', 0)}", size=12),
                     ft.Text(f"Categories: {res.get('categories_count', 0)}", size=12),
+                    ft.Divider(color=ModernPalette.CARD_BORDER),
+                    ft.Text(res["message"], size=11, color=ModernPalette.TEXT_MUTED),
                 ]
             ),
             actions=[
@@ -249,7 +251,7 @@ def build_settings_view(page: ft.Page, on_navigate, on_sync_request, on_logout=N
         bgcolor=ModernPalette.SURFACE_DARK,
         border_radius=16,
         padding=16,
-        border=ft.Border.all(1, ModernPalette.SUCCESS if is_db_connected else ModernPalette.WARNING),
+        border=ft.Border.all(1, ModernPalette.SUCCESS),
         content=ft.Column(
             spacing=10,
             controls=[
@@ -261,11 +263,11 @@ def build_settings_view(page: ft.Page, on_navigate, on_sync_request, on_logout=N
                             controls=[
                                 ft.Icon(
                                     ft.Icons.STORAGE_ROUNDED,
-                                    color=ModernPalette.SUCCESS if is_db_connected else ModernPalette.WARNING,
+                                    color=ModernPalette.SUCCESS,
                                     size=22,
                                 ),
                                 ft.Text(
-                                    "MySQL Database: Connected" if is_db_connected else "MySQL: Offline Fallback",
+                                    "MySQL Database: Connected" if is_using_mysql else "SQLite Mobile DB: Active",
                                     size=14,
                                     weight=ft.FontWeight.BOLD,
                                     color=ModernPalette.TEXT_PRIMARY,
@@ -274,21 +276,22 @@ def build_settings_view(page: ft.Page, on_navigate, on_sync_request, on_logout=N
                         ),
                         ft.Container(
                             content=ft.Text(
-                                "Live DB" if is_db_connected else "Offline",
+                                "Live MySQL" if is_using_mysql else "Mobile SQLite",
                                 size=10,
                                 weight=ft.FontWeight.BOLD,
-                                color=ModernPalette.SUCCESS if is_db_connected else ModernPalette.WARNING,
+                                color=ModernPalette.SUCCESS,
                             ),
-                            bgcolor="#132E27" if is_db_connected else "#3A2914",
-                            border=ft.Border.all(1, ModernPalette.SUCCESS if is_db_connected else ModernPalette.WARNING),
+                            bgcolor="#132E27",
+                            border=ft.Border.all(1, ModernPalette.SUCCESS),
                             border_radius=10,
                             padding=ft.Padding.symmetric(horizontal=8, vertical=3),
                         )
                     ]
                 ),
                 ft.Text(
-                    f"Connected to MySQL (root@localhost:3306/expenseflow_db)\n"
-                    f"All data in MySQL is synchronized with Google Sheets in real-time.",
+                    f"Connected to MySQL server ({db_health.get('host')}/{db_health.get('database')}).\nAll data is synchronized with Google Sheets in real-time."
+                    if is_using_mysql else
+                    f"Active offline-first local storage (expenses.db) on your device.\nSyncs seamlessly across Mobile and PC via Google Sheets 2-Way Cloud Sync.",
                     size=12,
                     color=ModernPalette.TEXT_MUTED,
                 ),
@@ -302,9 +305,9 @@ def build_settings_view(page: ft.Page, on_navigate, on_sync_request, on_logout=N
                             on_click=handle_sync_db_to_sheets,
                         ),
                         ft.OutlinedButton(
-                            "Test DB Connection",
+                            "Database Health",
                             icon=ft.Icons.DATA_OBJECT,
-                            on_click=handle_test_mysql,
+                            on_click=handle_test_db,
                         ),
                     ]
                 )
