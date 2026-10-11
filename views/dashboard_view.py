@@ -6,7 +6,7 @@ category spend summary, and recent transaction history.
 import datetime
 import flet as ft
 import database
-from config import CATEGORY_MAP, PAYMENT_MAP, ModernPalette
+from config import CATEGORY_MAP, PAYMENT_MAP, ModernPalette, APP_NAME
 
 def build_dashboard_view(page: ft.Page, on_navigate, on_sync_request) -> ft.Control:
     """Builds the mobile dashboard screen."""
@@ -51,93 +51,133 @@ def build_dashboard_view(page: ft.Page, on_navigate, on_sync_request) -> ft.Cont
     unsynced_items = [e for e in all_unsynced if curr_user_id is None or e.get("user_id") == curr_user_id]
     unsynced_count = len(unsynced_items)
 
-    # 1. Header with App Title and Sync Badge
-    header = ft.Row(
-        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-        vertical_alignment=ft.CrossAxisAlignment.CENTER,
-        controls=[
-            ft.Row(
-                spacing=10,
-                controls=[
-                    ft.Container(
-                        content=ft.Icon(ft.Icons.ACCOUNT_BALANCE_WALLET, color=ft.Colors.WHITE, size=24),
-                        bgcolor=ModernPalette.PRIMARY,
-                        border_radius=12,
-                        padding=8,
-                    ),
-                    ft.Column(
-                        spacing=1,
-                        controls=[
-                            ft.Text(
-                                f"Hi, {user_display} 👋",
-                                size=16,
-                                weight=ft.FontWeight.BOLD,
-                                color=ModernPalette.TEXT_PRIMARY
-                            ),
-                            ft.Text(
-                                f"@{username_display}",
-                                size=11,
-                                color=ModernPalette.ACCENT,
-                                weight=ft.FontWeight.W_500
-                            ),
-                        ]
-                    )
-                ]
-            ),
-            # Status Badges: MySQL Database + Google Sheets Sync
-            ft.Row(
-                spacing=6,
-                controls=[
-                    ft.Container(
-                        content=ft.Row(
-                            spacing=4,
-                            controls=[
-                                ft.Icon(
-                                    ft.Icons.STORAGE_ROUNDED,
-                                    size=13,
-                                    color=ModernPalette.SUCCESS if database.is_using_mysql() else ModernPalette.WARNING,
-                                ),
-                                ft.Text(
-                                    "MySQL" if database.is_using_mysql() else "SQLite",
-                                    size=10,
-                                    weight=ft.FontWeight.W_600,
-                                    color=ModernPalette.SUCCESS if database.is_using_mysql() else ModernPalette.WARNING,
-                                ),
-                            ]
+    # 1. Top Mobile App Header Bar (Brand + Live Cloud/DB Status Badges)
+    app_header_bar = ft.Container(
+        padding=ft.Padding.only(top=4, bottom=6),
+        content=ft.Row(
+            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            controls=[
+                # Brand Logo & Title
+                ft.Row(
+                    spacing=8,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    controls=[
+                        ft.Container(
+                            content=ft.Icon(ft.Icons.ACCOUNT_BALANCE_WALLET_ROUNDED, color=ft.Colors.WHITE, size=20),
+                            bgcolor=ModernPalette.PRIMARY,
+                            border_radius=10,
+                            padding=7,
+                            gradient=ft.LinearGradient(
+                                begin=ft.Alignment.TOP_LEFT,
+                                end=ft.Alignment.BOTTOM_RIGHT,
+                                colors=["#6366F1", "#4F46E5"]
+                            )
                         ),
-                        bgcolor="#1E293B",
-                        border=ft.Border.all(1, ModernPalette.SUCCESS if database.is_using_mysql() else ModernPalette.WARNING),
-                        border_radius=20,
-                        padding=ft.Padding.symmetric(horizontal=8, vertical=6),
-                        tooltip=database.get_db_type(),
-                    ),
-                    ft.Container(
-                        content=ft.Row(
-                            spacing=5,
+                        ft.Column(
+                            spacing=1,
                             controls=[
-                                ft.Icon(
-                                    ft.Icons.SYNC if unsynced_count > 0 else ft.Icons.CLOUD_DONE,
-                                    size=13,
-                                    color=ModernPalette.WARNING if unsynced_count > 0 else ModernPalette.SUCCESS,
-                                ),
-                                ft.Text(
-                                    f"{unsynced_count} Pending" if unsynced_count > 0 else "Sheets Synced",
-                                    size=10,
-                                    weight=ft.FontWeight.W_600,
-                                    color=ModernPalette.WARNING if unsynced_count > 0 else ModernPalette.SUCCESS,
-                                ),
+                                ft.Text(APP_NAME, size=15, weight=ft.FontWeight.BOLD, color=ModernPalette.TEXT_PRIMARY),
+                                ft.Text("Expense Tracker", size=10, color=ModernPalette.TEXT_MUTED, weight=ft.FontWeight.W_500),
                             ]
+                        )
+                    ]
+                ),
+                # Status Badges: MySQL/SQLite Database + Google Sheets 2-Way Sync
+                ft.Row(
+                    spacing=6,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    controls=[
+                        # Database Indicator Badge
+                        ft.Container(
+                            content=ft.Row(
+                                spacing=4,
+                                tight=True,
+                                controls=[
+                                    ft.Icon(
+                                        ft.Icons.STORAGE_ROUNDED,
+                                        size=12,
+                                        color=ModernPalette.SUCCESS if database.is_using_mysql() else ModernPalette.WARNING,
+                                    ),
+                                    ft.Text(
+                                        "MySQL" if database.is_using_mysql() else "SQLite",
+                                        size=10,
+                                        weight=ft.FontWeight.W_600,
+                                        color=ModernPalette.SUCCESS if database.is_using_mysql() else ModernPalette.WARNING,
+                                    ),
+                                ]
+                            ),
+                            bgcolor="#1E293B",
+                            border=ft.Border.all(1, ModernPalette.SUCCESS if database.is_using_mysql() else ModernPalette.WARNING),
+                            border_radius=16,
+                            padding=ft.Padding.symmetric(horizontal=8, vertical=5),
+                            tooltip=database.get_db_type(),
                         ),
-                        bgcolor="#1E293B",
-                        border=ft.Border.all(1, ModernPalette.WARNING if unsynced_count > 0 else ModernPalette.SUCCESS),
-                        border_radius=20,
-                        padding=ft.Padding.symmetric(horizontal=8, vertical=6),
-                        on_click=lambda _: on_sync_request(),
-                        tooltip="Click to sync database records with Google Sheets",
-                    ),
-                ]
-            )
-        ]
+                        # Google Sheets 2-Way Cloud Sync Badge (Interactive Button)
+                        ft.Container(
+                            content=ft.Row(
+                                spacing=4,
+                                tight=True,
+                                controls=[
+                                    ft.Icon(
+                                        ft.Icons.SYNC if unsynced_count > 0 else ft.Icons.CLOUD_DONE_ROUNDED,
+                                        size=12,
+                                        color=ModernPalette.WARNING if unsynced_count > 0 else ModernPalette.SUCCESS,
+                                    ),
+                                    ft.Text(
+                                        f"{unsynced_count} Pending" if unsynced_count > 0 else "Sheets Synced",
+                                        size=10,
+                                        weight=ft.FontWeight.W_600,
+                                        color=ModernPalette.WARNING if unsynced_count > 0 else ModernPalette.SUCCESS,
+                                    ),
+                                ]
+                            ),
+                            bgcolor="#1E293B",
+                            border=ft.Border.all(1, ModernPalette.WARNING if unsynced_count > 0 else ModernPalette.SUCCESS),
+                            border_radius=16,
+                            padding=ft.Padding.symmetric(horizontal=8, vertical=5),
+                            on_click=lambda _: on_sync_request(),
+                            tooltip="Tap to 2-Way Sync with Google Sheets",
+                        ),
+                    ]
+                )
+            ]
+        )
+    )
+
+    # 2. User Greeting Section (Starts cleanly below the top mobile header)
+    greeting_section = ft.Container(
+        padding=ft.Padding.only(top=4, bottom=2),
+        content=ft.Column(
+            spacing=2,
+            controls=[
+                ft.Text(
+                    f"Hi, {user_display} 👋",
+                    size=20,
+                    weight=ft.FontWeight.BOLD,
+                    color=ModernPalette.TEXT_PRIMARY,
+                ),
+                ft.Row(
+                    spacing=6,
+                    tight=True,
+                    controls=[
+                        ft.Text(
+                            f"@{username_display}",
+                            size=12,
+                            color=ModernPalette.ACCENT,
+                            weight=ft.FontWeight.W_600,
+                        ),
+                        ft.Text("•", size=12, color=ModernPalette.TEXT_MUTED),
+                        ft.Text(
+                            "Personal Finance Hub",
+                            size=12,
+                            color=ModernPalette.TEXT_MUTED,
+                            weight=ft.FontWeight.W_500,
+                        ),
+                    ]
+                )
+            ]
+        )
     )
 
 
@@ -474,9 +514,10 @@ def build_dashboard_view(page: ft.Page, on_navigate, on_sync_request) -> ft.Cont
         expand=True,
         spacing=18,
         scroll=ft.ScrollMode.AUTO,
-        padding=ft.Padding.only(left=16, right=16, top=16, bottom=120),
+        padding=ft.Padding.only(left=16, right=16, top=12, bottom=120),
         controls=[
-            header,
+            app_header_bar,
+            greeting_section,
             hero_card,
             quick_actions,
             categories_section,

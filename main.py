@@ -68,12 +68,20 @@ def main(page: ft.Page):
         alignment=ft.Alignment.TOP_CENTER,
     )
 
+    # Safe Area wrapper to guarantee content stays below mobile status bar, notch, and punch-hole cameras
+    safe_area_wrapper = ft.SafeArea(
+        content=responsive_wrapper,
+        top=True,
+        bottom=False,
+        expand=True,
+    )
+
     # Content body container
     body_container = ft.Container(
         expand=True,
         bgcolor=ModernPalette.BG_DARK,
         alignment=ft.Alignment.TOP_CENTER,
-        content=responsive_wrapper,
+        content=safe_area_wrapper,
     )
 
     def handle_page_resize(e=None):

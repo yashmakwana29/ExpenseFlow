@@ -241,8 +241,6 @@ def build_auth_view(page: ft.Page, on_login_success) -> ft.Control:
             action_btn.icon = ft.Icons.VERIFIED_USER_ROUNDED
             username_input.label = "User ID / Username"
             username_input.hint_text = "e.g. alex_99, john.doe (Unique)"
-            team_members_card.visible = False
-            demo_chip.visible = False
         else:
             tab_register.bgcolor = ft.Colors.TRANSPARENT
             tab_register.content.color = ModernPalette.TEXT_MUTED
@@ -251,9 +249,7 @@ def build_auth_view(page: ft.Page, on_login_success) -> ft.Control:
             action_btn.text = "Sign In ➔"
             action_btn.icon = ft.Icons.LOGIN_ROUNDED
             username_input.label = "User ID or Email"
-            username_input.hint_text = "e.g. admin, alex_99, or user@gmail.com"
-            team_members_card.visible = True
-            demo_chip.visible = True
+            username_input.hint_text = "e.g. alex_99 or user@gmail.com"
         page.update()
 
     tab_sign_in.on_click = lambda _: set_auth_mode(False)
@@ -267,91 +263,6 @@ def build_auth_view(page: ft.Page, on_login_success) -> ft.Control:
             spacing=4,
             controls=[tab_sign_in, tab_register]
         )
-    )
-
-    # 5. Multi-User Team Member Switcher Chips
-    all_users = database.get_all_users()
-    team_chips_row = ft.Row(wrap=True, spacing=6, run_spacing=6)
-
-    def select_team_member(uname: str):
-        username_input.value = uname
-        if uname == "admin":
-            password_input.value = "admin123"
-        else:
-            password_input.value = ""
-        page.update()
-
-    for u in all_users:
-        u_name = u["username"]
-        disp_name = u.get("full_name") or u_name
-        is_admin_user = (u.get("role") == "admin" or u_name == "admin")
-        team_chips_row.controls.append(
-            ft.Container(
-                content=ft.Row(
-                    tight=True,
-                    spacing=5,
-                    controls=[
-                        ft.Icon(ft.Icons.SECURITY if is_admin_user else ft.Icons.PERSON, size=13, color=ModernPalette.WARNING if is_admin_user else ModernPalette.ACCENT),
-                        ft.Text(f"@{u_name}", size=11, weight=ft.FontWeight.W_600, color=ModernPalette.TEXT_PRIMARY),
-                    ]
-                ),
-                bgcolor="#1E293B",
-                border=ft.Border.all(1, ModernPalette.WARNING if is_admin_user else ModernPalette.CARD_BORDER),
-                border_radius=12,
-                padding=ft.Padding.symmetric(horizontal=8, vertical=5),
-                on_click=lambda _, name=u_name: select_team_member(name),
-                tooltip=f"Log in as @{u_name} ({disp_name})",
-            )
-        )
-
-    team_members_card = ft.Container(
-        content=ft.Column(
-            spacing=6,
-            controls=[
-                ft.Row(
-                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                    controls=[
-                        ft.Text("Active Team Accounts:", size=11, weight=ft.FontWeight.BOLD, color=ModernPalette.TEXT_MUTED),
-                        ft.Text(f"{len(all_users)} registered", size=10, color=ModernPalette.ACCENT),
-                    ]
-                ),
-                team_chips_row,
-            ]
-        ),
-        bgcolor="#0B132B",
-        border=ft.Border.all(1, "#1E293B"),
-        border_radius=12,
-        padding=10,
-    )
-
-    # Quick Demo Autofill Chip
-    def autofill_demo(e):
-        username_input.value = "admin"
-        password_input.value = "admin123"
-        page.update()
-        page.show_dialog(
-            ft.SnackBar(
-                ft.Text("Demo credentials filled: admin / admin123"),
-                bgcolor=ModernPalette.INFO
-            )
-        )
-
-    demo_chip = ft.Container(
-        content=ft.Row(
-            tight=True,
-            spacing=6,
-            alignment=ft.MainAxisAlignment.CENTER,
-            controls=[
-                ft.Icon(ft.Icons.FLASH_ON_ROUNDED, size=15, color=ModernPalette.ACCENT),
-                ft.Text("Default Admin: admin / admin123 (Tap to fill)", size=11, weight=ft.FontWeight.W_600, color=ModernPalette.ACCENT),
-            ]
-        ),
-        bgcolor="#0F2840",
-        border=ft.Border.all(1, "#1E40AF"),
-        border_radius=20,
-        padding=ft.Padding.symmetric(horizontal=12, vertical=6),
-        on_click=autofill_demo,
-        tooltip="Click to quickly fill admin credentials",
     )
 
     # 6. Main Action Button & Handler
@@ -493,9 +404,7 @@ def build_auth_view(page: ft.Page, on_login_success) -> ft.Control:
             full_name_input,
             password_input,
             confirm_password_input,
-            # Team Accounts Quick Switcher (in Login mode)
-            team_members_card,
-            # Remember me & Quick Demo
+            # Remember me
             ft.Row(
                 alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                 controls=[
@@ -503,10 +412,6 @@ def build_auth_view(page: ft.Page, on_login_success) -> ft.Control:
                 ]
             ),
             action_btn,
-            ft.Row(
-                alignment=ft.MainAxisAlignment.CENTER,
-                controls=[demo_chip]
-            ),
             ft.Container(height=10),
             security_badge,
         ]
