@@ -6,7 +6,7 @@ category spend summary, and recent transaction history.
 import datetime
 import flet as ft
 import database
-from config import CATEGORY_MAP, PAYMENT_MAP, ModernPalette, APP_NAME
+from config import CATEGORY_MAP, PAYMENT_MAP, ModernPalette, APP_NAME, DEVELOPER_INFO
 
 def build_dashboard_view(page: ft.Page, on_navigate, on_sync_request) -> ft.Control:
     """Builds the mobile dashboard screen."""
@@ -509,6 +509,27 @@ def build_dashboard_view(page: ft.Page, on_navigate, on_sync_request) -> ft.Cont
         ]
     )
 
+    # 7. Creator Footer Tag
+    developer_footer = ft.Container(
+        alignment=ft.Alignment.CENTER,
+        padding=ft.Padding.only(top=10, bottom=10),
+        content=ft.Column(
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            spacing=3,
+            controls=[
+                ft.Row(
+                    alignment=ft.MainAxisAlignment.CENTER,
+                    spacing=5,
+                    controls=[
+                        ft.Text("Developed with ❤️ by", size=11, color=ModernPalette.TEXT_MUTED),
+                        ft.Text(DEVELOPER_INFO["name"], size=11, weight=ft.FontWeight.BOLD, color=ModernPalette.ACCENT),
+                    ]
+                ),
+                ft.Text(f"Contact: {DEVELOPER_INFO['phone']} • {DEVELOPER_INFO['email']}", size=10, color=ModernPalette.TEXT_MUTED),
+            ]
+        )
+    )
+
     # Return full scrollable mobile dashboard container
     return ft.ListView(
         expand=True,
@@ -522,6 +543,7 @@ def build_dashboard_view(page: ft.Page, on_navigate, on_sync_request) -> ft.Cont
             quick_actions,
             categories_section,
             recent_section,
+            developer_footer,
             # Extra bottom padding for navigation bar
             ft.Container(height=40),
         ]

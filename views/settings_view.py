@@ -7,7 +7,7 @@ import os
 import flet as ft
 import database
 import sheets_service
-from config import CURRENCIES, ModernPalette, APP_NAME, APP_VERSION
+from config import CURRENCIES, ModernPalette, APP_NAME, APP_VERSION, DEVELOPER_INFO
 
 def build_settings_view(page: ft.Page, on_navigate, on_sync_request, on_logout=None) -> ft.Control:
     """Builds the Settings & Google Sheets configuration screen."""
@@ -686,17 +686,111 @@ def build_settings_view(page: ft.Page, on_navigate, on_sync_request, on_logout=N
         )
     )
 
-    # 6. App Info
-    app_info = ft.Container(
-        alignment=ft.Alignment.CENTER,
-        padding=20,
+    # 6. About the Developer & Creator Section
+    developer_section = ft.Container(
+        bgcolor=ModernPalette.SURFACE_DARK,
+        border_radius=16,
+        padding=18,
+        border=ft.Border.all(1, ModernPalette.CARD_BORDER),
         content=ft.Column(
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-            spacing=4,
+            spacing=12,
             controls=[
-                ft.Text(f"{APP_NAME} v{APP_VERSION}", size=13, weight=ft.FontWeight.BOLD, color=ModernPalette.TEXT_PRIMARY),
-                ft.Text("Built with Python & Flet for Android", size=11, color=ModernPalette.TEXT_MUTED),
-                ft.Text("Automated Sync with Google Sheets & Reports", size=11, color=ModernPalette.ACCENT),
+                ft.Row(
+                    alignment=ft.MainAxisAlignment.CENTER,
+                    controls=[
+                        ft.Container(
+                            content=ft.Icon(ft.Icons.CODE_ROUNDED, color=ft.Colors.WHITE, size=24),
+                            bgcolor=ModernPalette.PRIMARY,
+                            border_radius=12,
+                            padding=10,
+                            gradient=ft.LinearGradient(
+                                begin=ft.Alignment.TOP_LEFT,
+                                end=ft.Alignment.BOTTOM_RIGHT,
+                                colors=["#6366F1", "#8B5CF6"]
+                            )
+                        ),
+                    ]
+                ),
+                ft.Column(
+                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                    spacing=2,
+                    controls=[
+                        ft.Text("Created & Developed By", size=11, weight=ft.FontWeight.W_500, color=ModernPalette.TEXT_MUTED),
+                        ft.Text(DEVELOPER_INFO["name"], size=18, weight=ft.FontWeight.BOLD, color=ModernPalette.TEXT_PRIMARY),
+                        ft.Text("Full-Stack & Mobile Developer", size=12, color=ModernPalette.ACCENT, weight=ft.FontWeight.W_600),
+                    ]
+                ),
+                ft.Divider(color=ModernPalette.CARD_BORDER, height=1),
+                # Contact Details
+                ft.Column(
+                    spacing=8,
+                    controls=[
+                        # Phone & WhatsApp
+                        ft.Container(
+                            content=ft.Row(
+                                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                                controls=[
+                                    ft.Row(
+                                        spacing=8,
+                                        controls=[
+                                            ft.Icon(ft.Icons.PHONE_ROUNDED, size=16, color=ModernPalette.SUCCESS),
+                                            ft.Text("Phone & WhatsApp:", size=12, color=ModernPalette.TEXT_MUTED),
+                                        ]
+                                    ),
+                                    ft.Text(DEVELOPER_INFO["phone"], size=12, weight=ft.FontWeight.BOLD, color=ModernPalette.TEXT_PRIMARY),
+                                ]
+                            ),
+                            padding=ft.Padding.symmetric(horizontal=6, vertical=2),
+                        ),
+                        # Email ID
+                        ft.Container(
+                            content=ft.Row(
+                                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                                controls=[
+                                    ft.Row(
+                                        spacing=8,
+                                        controls=[
+                                            ft.Icon(ft.Icons.EMAIL_ROUNDED, size=16, color=ModernPalette.ACCENT),
+                                            ft.Text("Email Address:", size=12, color=ModernPalette.TEXT_MUTED),
+                                        ]
+                                    ),
+                                    ft.Text(DEVELOPER_INFO["email"], size=12, weight=ft.FontWeight.BOLD, color=ModernPalette.TEXT_PRIMARY),
+                                ]
+                            ),
+                            padding=ft.Padding.symmetric(horizontal=6, vertical=2),
+                        ),
+                    ]
+                ),
+                # Quick Action Buttons: WhatsApp & Email
+                ft.Row(
+                    alignment=ft.MainAxisAlignment.CENTER,
+                    spacing=10,
+                    controls=[
+                        ft.FilledButton(
+                            "Chat on WhatsApp",
+                            icon=ft.Icons.CHAT_ROUNDED,
+                            url=DEVELOPER_INFO["whatsapp_url"],
+                            style=ft.ButtonStyle(
+                                bgcolor="#25D366",
+                                color=ft.Colors.WHITE,
+                                shape=ft.RoundedRectangleBorder(radius=10),
+                                padding=ft.Padding.symmetric(horizontal=12, vertical=8),
+                            ),
+                        ),
+                        ft.OutlinedButton(
+                            "Send Email",
+                            icon=ft.Icons.MAIL_OUTLINE_ROUNDED,
+                            url=f"mailto:{DEVELOPER_INFO['email']}",
+                            style=ft.ButtonStyle(
+                                shape=ft.RoundedRectangleBorder(radius=10),
+                                padding=ft.Padding.symmetric(horizontal=12, vertical=8),
+                            ),
+                        ),
+                    ]
+                ),
+                ft.Container(height=4),
+                ft.Text(f"{APP_NAME} v{APP_VERSION} • Built with Python & Flet for Android", size=10, color=ModernPalette.TEXT_MUTED),
             ]
         )
     )
@@ -715,7 +809,7 @@ def build_settings_view(page: ft.Page, on_navigate, on_sync_request, on_logout=N
             pref_section,
             categories_section,
             data_mgmt_section,
-            app_info,
+            developer_section,
             ft.Container(height=40),
         ]
     )

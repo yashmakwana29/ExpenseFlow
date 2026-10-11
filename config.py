@@ -9,6 +9,16 @@ from typing import Dict, Any, Tuple
 APP_NAME = "ExpenseFlow"
 APP_VERSION = "1.0.0"
 
+# Creator & Developer Information
+DEVELOPER_INFO = {
+    "name": "Yash Makwana",
+    "phone": "+91 8200174263",
+    "whatsapp": "+91 8200174263",
+    "whatsapp_url": "https://wa.me/918200174263",
+    "email": "yashmakwana26@gmail.com",
+    "role": "Creator & Lead Developer",
+}
+
 # Initial Default Categories
 DEFAULT_CATEGORIES = [
     {

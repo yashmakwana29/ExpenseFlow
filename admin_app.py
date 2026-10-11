@@ -10,7 +10,7 @@ import flet as ft
 import database
 import sheets_service
 import email_service
-from config import ModernPalette, APP_NAME, APP_VERSION
+from config import ModernPalette, APP_NAME, APP_VERSION, DEVELOPER_INFO
 
 def main(page: ft.Page):
     database.init_db()
@@ -609,6 +609,22 @@ def main(page: ft.Page):
                 stats_row,
                 toolbar,
                 users_column,
+                ft.Container(
+                    padding=ft.Padding.symmetric(vertical=6),
+                    content=ft.Row(
+                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                        controls=[
+                            ft.Text(f"{APP_NAME} Enterprise Console v{APP_VERSION}", size=11, color=ModernPalette.TEXT_MUTED),
+                            ft.Row(
+                                spacing=6,
+                                controls=[
+                                    ft.Text("Created & Developed by:", size=11, color=ModernPalette.TEXT_MUTED),
+                                    ft.Text(f"{DEVELOPER_INFO['name']} ({DEVELOPER_INFO['phone']} | {DEVELOPER_INFO['email']})", size=11, weight=ft.FontWeight.BOLD, color=ModernPalette.ACCENT),
+                                ]
+                            )
+                        ]
+                    )
+                ),
             ]
         )
     )
