@@ -68,27 +68,22 @@ def main(page: ft.Page):
         alignment=ft.Alignment.TOP_CENTER,
     )
 
-    # Safe Area wrapper to guarantee content stays below mobile status bar, notch, and punch-hole cameras
-    safe_area_wrapper = ft.SafeArea(
-        content=responsive_wrapper,
-        top=True,
-        bottom=False,
-        expand=True,
-    )
-
-    # Content body container
+    # Content body container with safe status bar top padding on mobile
     body_container = ft.Container(
         expand=True,
         bgcolor=ModernPalette.BG_DARK,
         alignment=ft.Alignment.TOP_CENTER,
-        content=safe_area_wrapper,
+        padding=ft.Padding.only(top=38, left=0, right=0, bottom=0),
+        content=responsive_wrapper,
     )
 
     def handle_page_resize(e=None):
         if page.width and page.width > 520:
             responsive_wrapper.width = 480
+            body_container.padding = ft.Padding.only(top=10, left=0, right=0, bottom=0)
         else:
             responsive_wrapper.width = None
+            body_container.padding = ft.Padding.only(top=38, left=0, right=0, bottom=0)
         page.update()
 
     page.on_resize = handle_page_resize
