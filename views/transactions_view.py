@@ -208,25 +208,29 @@ def build_transactions_view(page: ft.Page, on_navigate, on_edit_request) -> ft.C
         on_select=lambda e: (selected_payment.__setitem__(0, e.control.value), refresh_list(), page.update()),
     )
 
-    all_users = database.get_all_users()
-    user_options = [
-        ft.dropdown.Option(curr_username, f"My txns (@{curr_username})"),
-        ft.dropdown.Option("All", "All Members")
-    ] + [ft.dropdown.Option(u["username"], f"@{u['username']}") for u in all_users if u["username"] != curr_username]
+    is_admin = bool(curr_user and curr_user.get("role") == "admin")
+    filter_controls = [cat_dropdown, pay_dropdown]
 
-    user_dropdown = ft.Dropdown(
-        value=curr_username,
-        options=user_options,
-        dense=True,
-        expand=True,
-        border_radius=12,
-        bgcolor=ModernPalette.SURFACE_DARK,
-        border_color=ModernPalette.CARD_BORDER,
-        on_select=lambda e: (selected_user.__setitem__(0, e.control.value), refresh_list(), page.update()),
-    )
+    if is_admin:
+        all_users = database.get_all_users()
+        user_options = [
+            ft.dropdown.Option(curr_username, f"My txns (@{curr_username})"),
+            ft.dropdown.Option("All", "All Members")
+        ] + [ft.dropdown.Option(u["username"], f"@{u['username']}") for u in all_users if u["username"] != curr_username]
 
+        user_dropdown = ft.Dropdown(
+            value=curr_username,
+            options=user_options,
+            dense=True,
+            expand=True,
+            border_radius=12,
+            bgcolor=ModernPalette.SURFACE_DARK,
+            border_color=ModernPalette.CARD_BORDER,
+            on_select=lambda e: (selected_user.__setitem__(0, e.control.value), refresh_list(), page.update()),
+        )
+        filter_controls.append(user_dropdown)
 
-    filter_row = ft.Row(spacing=6, controls=[cat_dropdown, pay_dropdown, user_dropdown])
+    filter_row = ft.Row(spacing=6, controls=filter_controls)
 
     # Initial render
     refresh_list()

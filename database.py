@@ -697,6 +697,26 @@ def get_user_by_id(user_id: int) -> Optional[Dict[str, Any]]:
         }
     return None
 
+def get_user_by_username(username: str) -> Optional[Dict[str, Any]]:
+    """Fetch user details by username."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, username, email, full_name, role, is_active, email_verified, created_at FROM users WHERE LOWER(username) = LOWER(?)", (username.strip(),))
+    row = cursor.fetchone()
+    conn.close()
+    if row:
+        return {
+            "id": row["id"],
+            "username": row["username"],
+            "email": row.get("email", ""),
+            "full_name": row["full_name"],
+            "role": row.get("role", "admin" if row["username"] == "admin" else "user"),
+            "is_active": int(row.get("is_active", 1) or 1),
+            "email_verified": int(row.get("email_verified", 0) or 0),
+            "created_at": row["created_at"],
+        }
+    return None
+
 def admin_get_all_users() -> List[Dict[str, Any]]:
     """Fetches all registered users along with expense count and total spending metrics."""
     conn = get_connection()
@@ -1009,14 +1029,13 @@ def add_expense(
     item_uuid = str(uuid.uuid4())
     now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    if user_id is None or created_by is None:
-        curr_user = get_current_session_user()
-        if curr_user:
-            user_id = user_id or curr_user["id"]
-            created_by = created_by or curr_user["username"]
-        else:
-            user_id = user_id or 1
-            created_by = created_by or "admin"
+    curr_user = get_current_session_user()
+    if curr_user:
+        user_id = curr_user["id"]
+        created_by = curr_user["username"]
+    else:
+        user_id = user_id or 1
+        created_by = (created_by or "admin").strip()
 
     cursor.execute("""
         INSERT INTO expenses (uuid, title, amount, category, payment_mode, date, notes, user_id, created_by, synced, created_at, updated_at)
@@ -1081,7 +1100,14 @@ def upsert_expense_from_sync(
     creator = (created_by or "admin").strip()
     cursor.execute("SELECT id FROM users WHERE LOWER(username) = LOWER(?)", (creator,))
     user_row = cursor.fetchone()
-    user_id = user_row["id"] if user_row else 1
+    if user_row:
+        user_id = user_row["id"]
+    else:
+        curr_session = get_current_session_user()
+        if curr_session and curr_session["username"].lower() == creator.lower():
+            user_id = curr_session["id"]
+        else:
+            user_id = 1
 
     # 3. Ensure category exists in categories table
     cat_clean = category.strip() if category else "Other"
@@ -1153,7 +1179,12 @@ def get_expenses(
     user_id: Optional[int] = None,
     username: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
-    """Retrieve expenses with optional filters and sorting, supporting multi-user isolation."""
+    """Retrieve expenses with optional filters and sorting, strictly enforcing multi-user isolation."""
+    curr_user = get_current_session_user()
+    if curr_user and curr_user.get("role") != "admin":
+        user_id = curr_user["id"]
+        username = curr_user["username"]
+
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -1193,11 +1224,26 @@ def get_expenses(
     conn.close()
     return [dict(r) for r in rows]
 
-def get_unsynced_expenses() -> List[Dict[str, Any]]:
-    """Get all expenses that have not yet been synced to Google Sheets."""
+def get_unsynced_expenses(user_id: Optional[int] = None, username: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Get all expenses that have not yet been synced to Google Sheets, isolated by user."""
+    curr_user = get_current_session_user()
+    if curr_user and curr_user.get("role") != "admin":
+        user_id = curr_user["id"]
+        username = curr_user["username"]
+
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM expenses WHERE synced = 0 ORDER BY date ASC, id ASC")
+    query = "SELECT * FROM expenses WHERE synced = 0"
+    params: List[Any] = []
+    if user_id is not None:
+        query += " AND user_id = ?"
+        params.append(user_id)
+    elif username and username != "All":
+        query += " AND created_by = ?"
+        params.append(username)
+    query += " ORDER BY date ASC, id ASC"
+
+    cursor.execute(query, params)
     rows = cursor.fetchall()
     conn.close()
     return [dict(r) for r in rows]
@@ -1233,6 +1279,11 @@ def clear_all_expenses():
 
 def get_available_months(user_id: Optional[int] = None, username: Optional[str] = None) -> List[str]:
     """Get distinct year-month strings from expenses, filtered by user if requested."""
+    curr_user = get_current_session_user()
+    if curr_user and curr_user.get("role") != "admin":
+        user_id = curr_user["id"]
+        username = curr_user["username"]
+
     conn = get_connection()
     cursor = conn.cursor()
     query = "SELECT DISTINCT SUBSTR(date, 1, 7) as ym FROM expenses WHERE 1=1"
@@ -1256,8 +1307,13 @@ def get_stats(
     username: Optional[str] = None
 ) -> Dict[str, Any]:
     """
-    Compute comprehensive statistics with optional month and multi-user filter.
+    Compute comprehensive statistics strictly isolated by user for non-admin accounts.
     """
+    curr_user = get_current_session_user()
+    if curr_user and curr_user.get("role") != "admin":
+        user_id = curr_user["id"]
+        username = curr_user["username"]
+
     conn = get_connection()
     cursor = conn.cursor()
 

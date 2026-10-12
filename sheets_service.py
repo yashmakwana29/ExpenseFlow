@@ -269,16 +269,67 @@ class GoogleSheetsManager:
         except Exception:
             pass
 
+    def get_user_sheet_title(self, username: Optional[str] = None) -> str:
+        """Determines the dedicated worksheet title for a specific user (Expenses_<username>)."""
+        if not username:
+            curr_user = database.get_current_session_user()
+            clean_name = curr_user["username"].strip() if curr_user else "admin"
+        else:
+            clean_name = username.strip()
+        # Clean invalid characters not permitted in Google Sheets tab titles
+        for ch in [":", "\\", "/", "?", "*", "[", "]"]:
+            clean_name = clean_name.replace(ch, "_")
+        return f"Expenses_{clean_name}"
+
+    def get_or_create_user_worksheet(self, username: Optional[str] = None) -> gspread.Worksheet:
+        """
+        Retrieves or creates an isolated, dedicated worksheet for the specified user.
+        Format: 'Expenses_<username>' (e.g. Expenses_yashm, Expenses_admin).
+        """
+        if not self.spreadsheet:
+            connected, msg = self.connect()
+            if not connected:
+                raise RuntimeError(msg)
+
+        title = self.get_user_sheet_title(username)
+        try:
+            ws = self.spreadsheet.worksheet(title)
+        except gspread.exceptions.WorksheetNotFound:
+            try:
+                sheet1 = self.spreadsheet.worksheet("Sheet1")
+                if len(sheet1.row_values(1)) == 0:
+                    sheet1.update_title(title)
+                    ws = sheet1
+                else:
+                    ws = self.spreadsheet.add_worksheet(title=title, rows=1000, cols=12)
+            except Exception:
+                ws = self.spreadsheet.add_worksheet(title=title, rows=1000, cols=12)
+
+        # Check and ensure standard headers
+        existing_headers = ws.row_values(1)
+        if not existing_headers:
+            ws.update(range_name="A1:J1", values=[EXPENSES_HEADERS])
+            try:
+                ws.format("A1:J1", {
+                    "backgroundColor": {"red": 0.12, "green": 0.16, "blue": 0.23},
+                    "textFormat": {"foregroundColor": {"red": 1.0, "green": 1.0, "blue": 1.0}, "bold": True},
+                    "horizontalAlignment": "CENTER"
+                })
+            except Exception:
+                pass
+        return ws
+
     def sync_expense(self, expense: Dict[str, Any]) -> Tuple[bool, str]:
-        """Sync a single expense to the Google Sheet Expenses_Log."""
+        """Sync a single expense strictly to the creator's dedicated Google Sheet tab."""
         if not self.spreadsheet:
             connected, msg = self.connect()
             if not connected:
                 return False, msg
 
         try:
-            log_sheet = self.spreadsheet.worksheet("Expenses_Log")
-            
+            creator = (expense.get("created_by") or "admin").strip()
+            user_sheet = self.get_or_create_user_worksheet(creator)
+
             # Format month-year
             date_val = expense.get("date", "")
             month_year = date_val[:7] if len(date_val) >= 7 else ""
@@ -294,27 +345,32 @@ class GoogleSheetsManager:
                 expense.get("amount", 0.0),
                 expense.get("payment_mode", ""),
                 full_desc,
-                expense.get("created_by", "admin"),
+                creator,
                 month_year,
                 datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             ]
 
-            log_sheet.append_row(row_data, value_input_option="USER_ENTERED")
+            user_sheet.append_row(row_data, value_input_option="USER_ENTERED")
             database.mark_expenses_as_synced([expense.get("uuid")])
             database.set_setting("last_sync_time", datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-            return True, "Synced successfully to Google Sheets!"
+            return True, f"Synced successfully to your personal Google Sheet ({user_sheet.title})!"
 
         except Exception as e:
             return False, f"Failed to sync expense: {str(e)}"
 
-    def sync_all_pending(self) -> Tuple[int, str]:
+    def sync_all_pending(self, username: Optional[str] = None) -> Tuple[int, str]:
         """
-        Pulls all unsynced expenses from SQLite and appends them in a single batch to Google Sheets.
-        Returns: (count_synced, status_message)
+        Pushes unsynced expenses to each user's specific worksheet tab (Expenses_<username>).
+        If username is provided, syncs only that user's pending expenses.
         """
-        pending = database.get_unsynced_expenses()
+        if not username:
+            curr_user = database.get_current_session_user()
+            if curr_user and curr_user.get("role") != "admin":
+                username = curr_user["username"]
+
+        pending = database.get_unsynced_expenses(username=username)
         if not pending:
-            return 0, "All expenses are already up to date with Google Sheets."
+            return 0, "All your expenses are already up to date with Google Sheets."
 
         if not self.spreadsheet:
             connected, msg = self.connect()
@@ -322,63 +378,73 @@ class GoogleSheetsManager:
                 return 0, msg
 
         try:
-            log_sheet = self.spreadsheet.worksheet("Expenses_Log")
-
-            # Check existing UUIDs in Google Sheet to avoid duplicate appending
-            try:
-                existing_uuids = set(log_sheet.col_values(2)[1:])  # column 2 is UUID
-            except Exception:
-                existing_uuids = set()
-
-            rows_to_append = []
-            uuids_synced = []
-
+            # Group pending items by user
+            user_groups: Dict[str, List[Dict[str, Any]]] = {}
             for exp in pending:
-                if exp["uuid"] in existing_uuids:
-                    uuids_synced.append(exp["uuid"])
-                    continue
+                u = (exp.get("created_by") or "admin").strip()
+                user_groups.setdefault(u, []).append(exp)
 
-                date_val = exp.get("date", "")
-                month_year = date_val[:7] if len(date_val) >= 7 else ""
-                notes_str = exp.get("notes", "")
-                title_str = exp.get("title", "")
-                full_desc = f"{title_str} - {notes_str}" if notes_str else title_str
+            total_synced = 0
+            all_synced_uuids = []
 
-                rows_to_append.append([
-                    exp.get("id", ""),
-                    exp.get("uuid", ""),
-                    date_val,
-                    exp.get("category", ""),
-                    exp.get("amount", 0.0),
-                    exp.get("payment_mode", ""),
-                    full_desc,
-                    exp.get("created_by", "admin"),
-                    month_year,
-                    datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                ])
-                uuids_synced.append(exp["uuid"])
+            for u_name, exp_list in user_groups.items():
+                user_sheet = self.get_or_create_user_worksheet(u_name)
+                try:
+                    existing_uuids = set(user_sheet.col_values(2)[1:])  # col 2 is UUID
+                except Exception:
+                    existing_uuids = set()
 
-            if rows_to_append:
-                log_sheet.append_rows(rows_to_append, value_input_option="USER_ENTERED")
+                rows_to_append = []
+                for exp in exp_list:
+                    if exp["uuid"] in existing_uuids:
+                        all_synced_uuids.append(exp["uuid"])
+                        continue
 
-            # Mark all synced in DB
-            database.mark_expenses_as_synced(uuids_synced)
+                    date_val = exp.get("date", "")
+                    month_year = date_val[:7] if len(date_val) >= 7 else ""
+                    notes_str = exp.get("notes", "")
+                    title_str = exp.get("title", "")
+                    full_desc = f"{title_str} - {notes_str}" if notes_str else title_str
+
+                    rows_to_append.append([
+                        exp.get("id", ""),
+                        exp.get("uuid", ""),
+                        date_val,
+                        exp.get("category", ""),
+                        float(exp.get("amount", 0.0)),
+                        exp.get("payment_mode", ""),
+                        full_desc,
+                        u_name,
+                        month_year,
+                        datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    ])
+                    all_synced_uuids.append(exp["uuid"])
+
+                if rows_to_append:
+                    user_sheet.append_rows(rows_to_append, value_input_option="USER_ENTERED")
+                    total_synced += len(rows_to_append)
+
+            if all_synced_uuids:
+                database.mark_expenses_as_synced(all_synced_uuids)
+
             database.set_setting("last_sync_time", datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-
-            return len(uuids_synced), f"Successfully synced {len(uuids_synced)} expense(s) to Google Sheets!"
+            target_label = self.get_user_sheet_title(username) if username else "user-specific sheet tabs"
+            return len(all_synced_uuids), f"Successfully synced {len(all_synced_uuids)} expense(s) to Google Sheets ({target_label})!"
 
         except Exception as e:
             return 0, f"Sync error: {str(e)}"
 
-    def sync_all_db_records(self) -> Tuple[int, int, str]:
+    def sync_all_db_records(self, username: Optional[str] = None) -> Tuple[int, int, str]:
         """
-        Comprehensive sync: reads ALL records in the database (MySQL) and verifies
-        that each one is present in Google Sheets Expenses_Log.
-        If any record in the DB is missing from Google Sheets, it is immediately appended.
-        Ensures 100% data consistency so all DB data can be seen in Google Sheets!
-        Returns: (newly_synced_count, total_db_count, status_message)
+        Comprehensive sync: reads records from the DB and ensures each is present
+        in its dedicated user worksheet (Expenses_<username>).
         """
-        all_expenses = database.get_expenses(limit=None)
+        if not username:
+            curr_user = database.get_current_session_user()
+            if curr_user and curr_user.get("role") != "admin":
+                username = curr_user["username"]
+
+        all_expenses = database.get_expenses(limit=None, username=username)
         if not all_expenses:
             return 0, 0, "No expenses found in database to synchronize."
 
@@ -388,78 +454,91 @@ class GoogleSheetsManager:
                 return 0, len(all_expenses), msg
 
         try:
-            log_sheet = self.spreadsheet.worksheet("Expenses_Log")
-
-            # Check existing UUIDs in Google Sheet
-            try:
-                existing_uuids = set(log_sheet.col_values(2)[1:])  # column 2 is UUID
-            except Exception:
-                existing_uuids = set()
-
-            rows_to_append = []
-            uuids_synced = []
-
+            user_groups: Dict[str, List[Dict[str, Any]]] = {}
             for exp in all_expenses:
-                if exp["uuid"] in existing_uuids:
-                    # Already in Google Sheet; ensure marked as synced in DB
-                    if not exp.get("synced"):
-                        uuids_synced.append(exp["uuid"])
-                    continue
+                u = (exp.get("created_by") or "admin").strip()
+                user_groups.setdefault(u, []).append(exp)
 
-                date_val = exp.get("date", "")
-                month_year = date_val[:7] if len(date_val) >= 7 else ""
-                notes_str = exp.get("notes", "")
-                title_str = exp.get("title", "")
-                full_desc = f"{title_str} - {notes_str}" if notes_str else title_str
+            new_count_total = 0
+            for u_name, exps in user_groups.items():
+                user_sheet = self.get_or_create_user_worksheet(u_name)
+                try:
+                    existing_uuids = set(user_sheet.col_values(2)[1:])
+                except Exception:
+                    existing_uuids = set()
 
-                rows_to_append.append([
-                    exp.get("id", ""),
-                    exp.get("uuid", ""),
-                    date_val,
-                    exp.get("category", ""),
-                    float(exp.get("amount", 0.0)),
-                    exp.get("payment_mode", ""),
-                    full_desc,
-                    exp.get("created_by", "admin"),
-                    month_year,
-                    datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                ])
-                uuids_synced.append(exp["uuid"])
+                rows_to_append = []
+                uuids_synced = []
 
-            if rows_to_append:
-                log_sheet.append_rows(rows_to_append, value_input_option="USER_ENTERED")
+                for exp in exps:
+                    if exp["uuid"] in existing_uuids:
+                        if not exp.get("synced"):
+                            uuids_synced.append(exp["uuid"])
+                        continue
 
-            if uuids_synced:
-                database.mark_expenses_as_synced(uuids_synced)
+                    date_val = exp.get("date", "")
+                    month_year = date_val[:7] if len(date_val) >= 7 else ""
+                    notes_str = exp.get("notes", "")
+                    title_str = exp.get("title", "")
+                    full_desc = f"{title_str} - {notes_str}" if notes_str else title_str
+
+                    rows_to_append.append([
+                        exp.get("id", ""),
+                        exp.get("uuid", ""),
+                        date_val,
+                        exp.get("category", ""),
+                        float(exp.get("amount", 0.0)),
+                        exp.get("payment_mode", ""),
+                        full_desc,
+                        u_name,
+                        month_year,
+                        datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    ])
+                    uuids_synced.append(exp["uuid"])
+
+                if rows_to_append:
+                    user_sheet.append_rows(rows_to_append, value_input_option="USER_ENTERED")
+                    new_count_total += len(rows_to_append)
+
+                if uuids_synced:
+                    database.mark_expenses_as_synced(uuids_synced)
 
             now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             database.set_setting("last_sync_time", now_str)
 
             total_db = len(all_expenses)
-            new_count = len(rows_to_append)
-            if new_count > 0:
-                return new_count, total_db, f"Synced {new_count} new DB expense(s) to Google Sheets! (Total in DB: {total_db})"
-            return 0, total_db, f"Google Sheets is fully up-to-date with DB! All {total_db} expenses verified."
+            if new_count_total > 0:
+                return new_count_total, total_db, f"Synced {new_count_total} new DB expense(s) to user-specific Google Sheets!"
+            return 0, total_db, f"Google Sheets is fully up-to-date! All {total_db} user expenses verified."
 
         except Exception as e:
             return 0, len(all_expenses), f"Sync error: {str(e)}"
 
-    def pull_from_sheets_to_db(self) -> Tuple[int, str]:
+    def pull_from_sheets_to_db(self, username: Optional[str] = None) -> Tuple[int, str]:
         """
-        Pulls all expense records from Google Sheets Expenses_Log worksheet
-        and saves any missing records into the local database (MySQL or SQLite).
-        Returns: (new_records_count, status_message)
+        Pulls expense records strictly from the user's specific sheet (Expenses_<username>)
+        and saves them into the local database tagged with that username and user_id.
+        Guarantees other users' records will NEVER be pulled into this user's database.
         """
         if not self.spreadsheet:
             connected, msg = self.connect()
             if not connected:
                 return 0, msg
 
+        if not username:
+            curr_user = database.get_current_session_user()
+            username = curr_user["username"].strip() if curr_user else "admin"
+
+        target_title = self.get_user_sheet_title(username)
         try:
-            log_sheet = self.spreadsheet.worksheet("Expenses_Log")
-            rows = log_sheet.get_all_values()
+            user_sheet = self.spreadsheet.worksheet(target_title)
+        except gspread.exceptions.WorksheetNotFound:
+            user_sheet = self.get_or_create_user_worksheet(username)
+
+        try:
+            rows = user_sheet.get_all_values()
             if not rows or len(rows) <= 1:
-                return 0, "No expense records found in Google Sheet."
+                return 0, f"No expense records found in your personal sheet tab '{user_sheet.title}'."
 
             headers = [str(h).strip().lower() for h in rows[0]]
 
@@ -481,7 +560,7 @@ class GoogleSheetsManager:
                 elif "desc" in h or "notes" in h: desc_idx = idx
                 elif "user" in h: user_idx = idx
 
-            # Fallback to default positional column indices if header matching missed
+            # Fallback to standard positional column indices if header matching missed
             if uuid_idx == -1: uuid_idx = 1
             if date_idx == -1: date_idx = 2
             if cat_idx == -1: cat_idx = 3
@@ -519,13 +598,9 @@ class GoogleSheetsManager:
                     title_val = desc_val if desc_val else category_val
                     notes_val = ""
 
-                created_by_val = "admin"
+                created_by_val = username
                 if user_idx != -1 and len(row) > user_idx and row[user_idx].strip():
                     created_by_val = row[user_idx].strip()
-                elif len(row) >= 8:
-                    candidate = row[7].strip()
-                    if not candidate.startswith("202") and "-" not in candidate:
-                        created_by_val = candidate
 
                 now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 inserted = database.upsert_expense_from_sync(
@@ -543,16 +618,17 @@ class GoogleSheetsManager:
                     new_count += 1
 
             database.set_setting("last_sync_time", datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-            return new_count, f"Downloaded {new_count} new expense(s) from Google Sheets!"
+            return new_count, f"Downloaded {new_count} expense(s) from your personal sheet '{user_sheet.title}'!"
 
         except Exception as e:
             return 0, f"Pull sync error: {str(e)}"
 
-    def sync_bidirectional(self) -> Tuple[int, int, str]:
+    def sync_bidirectional(self, username: Optional[str] = None) -> Tuple[int, int, str]:
         """
-        Complete 2-way data sync between local database (MySQL / SQLite) and Google Sheets:
-        1. Pushes any pending local expenses to Google Sheets.
-        2. Pulls all cloud expenses from Google Sheets into local database.
+        Complete 2-way data sync strictly isolated to the user's specific Google Sheet tab:
+        1. Resolves active user so only that user's records are pushed/pulled.
+        2. Pushes pending local expenses for that user to Expenses_<username>.
+        3. Pulls cloud expenses from Expenses_<username> into the local database.
         Returns: (pushed_count, pulled_count, status_message)
         """
         if not self.spreadsheet:
@@ -560,24 +636,30 @@ class GoogleSheetsManager:
             if not connected:
                 return 0, 0, msg
 
-        # Step 1: Push local unsynced to Google Sheets
-        pushed_count, push_msg = self.sync_all_pending()
+        if not username:
+            curr_user = database.get_current_session_user()
+            if curr_user:
+                username = curr_user["username"]
 
-        # Step 2: Pull cloud expenses to local database
-        pulled_count, pull_msg = self.pull_from_sheets_to_db()
+        # Step 1: Push user's unsynced expenses to their dedicated sheet
+        pushed_count, push_msg = self.sync_all_pending(username=username)
+
+        # Step 2: Pull cloud expenses from user's dedicated sheet
+        pulled_count, pull_msg = self.pull_from_sheets_to_db(username=username)
 
         total = pushed_count + pulled_count
         now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         database.set_setting("last_sync_time", now_str)
 
+        target_title = self.get_user_sheet_title(username)
         if total == 0:
-            return 0, 0, "All data is already 100% up to date with Google Sheets!"
+            return 0, 0, f"All data is already 100% up to date with '{target_title}'!"
 
         actions = []
         if pushed_count > 0:
-            actions.append(f"Uploaded {pushed_count} to Cloud")
+            actions.append(f"Uploaded {pushed_count} to {target_title}")
         if pulled_count > 0:
-            actions.append(f"Downloaded {pulled_count} from Cloud")
+            actions.append(f"Downloaded {pulled_count} from {target_title}")
 
         return pushed_count, pulled_count, f"Sync successful: {', '.join(actions)}!"
 

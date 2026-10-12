@@ -391,10 +391,13 @@ def build_reports_view(page: ft.Page, on_navigate) -> ft.Control:
         ]
     )
 
+    is_admin = bool(curr_user and curr_user.get("role") == "admin")
+
     def on_scope_change(scope_val):
         selected_scope[0] = scope_val
         my_chip.selected = (scope_val == "my")
-        team_chip.selected = (scope_val == "team")
+        if is_admin:
+            team_chip.selected = (scope_val == "team")
         render_report_data()
         page.update()
 
@@ -403,14 +406,18 @@ def build_reports_view(page: ft.Page, on_navigate) -> ft.Control:
         selected=True,
         on_select=lambda _: on_scope_change("my"),
     )
-    team_chip = ft.Chip(
-        label=ft.Text("All Team"),
-        selected=False,
-        on_select=lambda _: on_scope_change("team"),
-    )
+    scope_controls = [my_chip]
+    if is_admin:
+        team_chip = ft.Chip(
+            label=ft.Text("All Team"),
+            selected=False,
+            on_select=lambda _: on_scope_change("team"),
+        )
+        scope_controls.append(team_chip)
+
     scope_row = ft.Row(
         spacing=8,
-        controls=[my_chip, team_chip]
+        controls=scope_controls
     )
 
     # Initial render

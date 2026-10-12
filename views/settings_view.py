@@ -231,13 +231,13 @@ def build_settings_view(page: ft.Page, on_navigate, on_sync_request, on_logout=N
                     tight=True,
                     controls=[
                         ft.ProgressRing(width=16, height=16, stroke_width=2, color=ft.Colors.WHITE),
-                        ft.Text("Synchronizing DB & Google Sheets (2-Way)..."),
+                        ft.Text(f"Synchronizing with Expenses_{username_display} (2-Way)..."),
                     ]
                 ),
                 bgcolor=ModernPalette.PRIMARY,
             )
         )
-        pushed, pulled, msg = mgr.sync_bidirectional()
+        pushed, pulled, msg = mgr.sync_bidirectional(username=username_display)
         has_error = "error" in msg.lower() or "failed" in msg.lower()
         page.show_dialog(
             ft.SnackBar(
@@ -289,9 +289,11 @@ def build_settings_view(page: ft.Page, on_navigate, on_sync_request, on_logout=N
                     ]
                 ),
                 ft.Text(
-                    f"Connected to MySQL server ({db_health.get('host')}/{db_health.get('database')}).\nAll data is synchronized with Google Sheets in real-time."
+                    f"Connected to MySQL server ({db_health.get('host')}/{db_health.get('database')}).\n"
+                    f"All data is synchronized with your personal Google Sheet tab (Expenses_{username_display})."
                     if is_using_mysql else
-                    f"Active offline-first local storage (expenses.db) on your device.\nSyncs seamlessly across Mobile and PC via Google Sheets 2-Way Cloud Sync.",
+                    f"Active offline-first local storage (expenses.db) on your device.\n"
+                    f"Syncs with your personal Google Sheet tab (Expenses_{username_display}).",
                     size=12,
                     color=ModernPalette.TEXT_MUTED,
                 ),
@@ -438,6 +440,13 @@ def build_settings_view(page: ft.Page, on_navigate, on_sync_request, on_logout=N
                     controls=[
                         sheet_save_btn,
                         *( [ft.OutlinedButton("Open Sheet", icon=ft.Icons.OPEN_IN_NEW, url=sheet_url)] if sheet_url else [] )
+                    ]
+                ),
+                ft.Row(
+                    spacing=6,
+                    controls=[
+                        ft.Icon(ft.Icons.LOCK_OUTLINE_ROUNDED, size=14, color=ModernPalette.ACCENT),
+                        ft.Text(f"Your Dedicated Sheet Tab: Expenses_{username_display}", size=11, color=ModernPalette.ACCENT, weight=ft.FontWeight.BOLD),
                     ]
                 ),
                 ft.Text(f"Last sync: {last_sync}", size=11, color=ModernPalette.TEXT_MUTED),
