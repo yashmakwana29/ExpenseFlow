@@ -402,9 +402,19 @@ def build_settings_view(page: ft.Page, on_navigate, on_sync_request, on_logout=N
         page.show_dialog(dialog)
 
     # 2. Spreadsheet Settings
+    sheet_url_input = ft.TextField(
+        value=sheet_url,
+        label="Google Spreadsheet URL",
+        hint_text="https://docs.google.com/spreadsheets/d/...",
+        border_radius=12,
+        filled=True,
+        bgcolor=ModernPalette.SURFACE_DARK,
+        border_color=ModernPalette.CARD_BORDER,
+    )
+
     sheet_name_input = ft.TextField(
         value=saved_sheet_name,
-        label="Spreadsheet Name",
+        label="Spreadsheet Title / Name",
         hint_text="ExpenseFlow Tracker & Reports",
         border_radius=12,
         filled=True,
@@ -412,17 +422,20 @@ def build_settings_view(page: ft.Page, on_navigate, on_sync_request, on_logout=N
         border_color=ModernPalette.CARD_BORDER,
     )
 
-    def save_sheet_name(_):
-        val = sheet_name_input.value.strip()
-        if val:
-            database.set_setting("sheet_name", val)
-            page.show_dialog(ft.SnackBar(ft.Text("Spreadsheet name saved!"), bgcolor=ModernPalette.SUCCESS))
+    def save_sheet_settings(_):
+        u_val = sheet_url_input.value.strip()
+        n_val = sheet_name_input.value.strip()
+        database.set_setting("sheet_url", u_val)
+        if n_val:
+            database.set_setting("sheet_name", n_val)
+        page.show_dialog(ft.SnackBar(ft.Text("Google Sheets configuration saved!"), bgcolor=ModernPalette.SUCCESS))
+        page.update()
 
     sheet_save_btn = ft.FilledButton(
-        "Save Sheet Name",
+        "Save Google Sheet Link",
         icon=ft.Icons.SAVE,
         style=ft.ButtonStyle(bgcolor=ModernPalette.PRIMARY, color=ft.Colors.WHITE),
-        on_click=save_sheet_name,
+        on_click=save_sheet_settings,
     )
 
     spreadsheet_section = ft.Container(
@@ -433,7 +446,8 @@ def build_settings_view(page: ft.Page, on_navigate, on_sync_request, on_logout=N
         content=ft.Column(
             spacing=10,
             controls=[
-                ft.Text("Google Spreadsheet Name", size=14, weight=ft.FontWeight.BOLD, color=ModernPalette.TEXT_PRIMARY),
+                ft.Text("Google Sheets Cloud Sync Configuration", size=14, weight=ft.FontWeight.BOLD, color=ModernPalette.TEXT_PRIMARY),
+                sheet_url_input,
                 sheet_name_input,
                 ft.Row(
                     spacing=8,

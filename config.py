@@ -234,7 +234,7 @@ DEFAULT_SETTINGS = {
     "theme_mode": "dark",
     "auto_sync": "true",
     "last_sync_time": "",
-    "sheet_url": "https://docs.google.com/spreadsheets/d/1New3ozLQK5nRLoUocDJchBNquz9gsDIVBLaupZzOwcE",
+    "sheet_url": "",
 }
 
 # Theme Colors (Modern Dark / Neon accent palette)

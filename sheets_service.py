@@ -102,6 +102,16 @@ class GoogleSheetsManager:
                 try:
                     self.spreadsheet = self.client.open_by_url(sheet_target)
                 except Exception as ex:
+                    ex_str = str(ex).lower()
+                    if "404" in ex_str or "not found" in ex_str:
+                        database.set_setting("sheet_url", "")
+                        return False, (
+                            "The previously linked Google Sheet was deleted or cannot be found (404).\n"
+                            "To link your new clean sheet:\n"
+                            "1. Create a sheet at https://sheets.new\n"
+                            f"2. Share with: {self.get_service_account_email()} (as Editor)\n"
+                            "3. Paste the new URL into Settings ➔ Google Spreadsheet URL."
+                        )
                     return False, f"Could not open sheet by URL. Please check if shared with '{self.get_service_account_email()}': {ex}"
             else:
                 try:

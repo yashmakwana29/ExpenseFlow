@@ -367,8 +367,6 @@ def _init_mysql_db():
     # Populate default settings if not exists
     for key, val in DEFAULT_SETTINGS.items():
         cursor.execute("INSERT IGNORE INTO settings (`key`, value) VALUES (?, ?)", (key, str(val)))
-    # Ensure sheet_url is populated with the default URL if currently empty
-    cursor.execute("UPDATE settings SET value = ? WHERE `key` = 'sheet_url' AND (value = '' OR value IS NULL)", (DEFAULT_SETTINGS["sheet_url"],))
 
     # Populate default user (admin / admin123) if no users exist
     cursor.execute("SELECT COUNT(*) as count FROM users")
@@ -487,8 +485,6 @@ def _init_sqlite_db():
 
     for key, val in DEFAULT_SETTINGS.items():
         cursor.execute("INSERT OR IGNORE INTO settings (`key`, value) VALUES (?, ?)", (key, str(val)))
-    # Ensure sheet_url is populated with the default URL if currently empty
-    cursor.execute("UPDATE settings SET value = ? WHERE `key` = 'sheet_url' AND (value = '' OR value IS NULL)", (DEFAULT_SETTINGS["sheet_url"],))
 
     cursor.execute("SELECT COUNT(*) as count FROM users")
     if cursor.fetchone()["count"] == 0:
