@@ -322,8 +322,8 @@ def build_reports_view(page: ft.Page, on_navigate) -> ft.Control:
         content_area.controls.append(pay_section)
 
         # 5. Google Sheets Live Reports Integration Card
-        sheet_url = database.get_setting("sheet_url", "")
-        sheet_name = database.get_setting("sheet_name", "ExpenseFlow Tracker & Reports")
+        sheet_url = database.get_setting("sheet_url", "").strip()
+        sheet_name = database.get_setting("sheet_name", "ExpenseFlow")
 
         sheets_banner = ft.Container(
             gradient=ft.LinearGradient(
@@ -335,7 +335,7 @@ def build_reports_view(page: ft.Page, on_navigate) -> ft.Control:
             padding=16,
             border=ft.Border.all(1, "#059669"),
             content=ft.Column(
-                spacing=8,
+                spacing=10,
                 controls=[
                     ft.Row(
                         spacing=8,
@@ -346,8 +346,7 @@ def build_reports_view(page: ft.Page, on_navigate) -> ft.Control:
                     ),
                     ft.Text(
                         f"Spreadsheet: '{sheet_name}'\n"
-                        "Live reports are automatically maintained in 4 Google Sheets tabs: "
-                        "Expenses_Log, Monthly_Summary, Category_Analysis, and Payment_Methods.",
+                        "Live reports are automatically maintained across isolated user tabs and summary sheets.",
                         size=11,
                         color="#A7F3D0",
                     ),
@@ -357,7 +356,21 @@ def build_reports_view(page: ft.Page, on_navigate) -> ft.Control:
                         style=ft.ButtonStyle(bgcolor="#10B981", color=ft.Colors.WHITE),
                         url=sheet_url if sheet_url else None,
                         on_click=(lambda _: on_navigate("settings")) if not sheet_url else None,
-                    )
+                    ),
+                    *( [
+                        ft.Container(
+                            bgcolor="rgba(0,0,0,0.25)",
+                            border_radius=8,
+                            padding=ft.Padding.symmetric(horizontal=10, vertical=6),
+                            content=ft.Row(
+                                spacing=6,
+                                controls=[
+                                    ft.Icon(ft.Icons.LINK, size=13, color="#34D399"),
+                                    ft.Text(sheet_url, size=10, color="#A7F3D0", selectable=True, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS, expand=True),
+                                ]
+                            )
+                        )
+                    ] if sheet_url else [] )
                 ]
             )
         )

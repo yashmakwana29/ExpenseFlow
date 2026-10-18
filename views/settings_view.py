@@ -15,7 +15,7 @@ def build_settings_view(page: ft.Page, on_navigate, on_sync_request, on_logout=N
     mgr = sheets_service.GoogleSheetsManager()
     service_email = mgr.get_service_account_email()
     has_creds = bool(service_email)
-    saved_sheet_name = database.get_setting("sheet_name", "ExpenseFlow Tracker & Reports")
+    saved_sheet_name = database.get_setting("sheet_name", "ExpenseFlow")
     saved_currency = database.get_setting("currency_symbol", "₹")
     saved_budget = database.get_setting("monthly_budget", "25000")
     last_sync = database.get_setting("last_sync_time", "Never")
@@ -429,10 +429,10 @@ def build_settings_view(page: ft.Page, on_navigate, on_sync_request, on_logout=N
         if n_val:
             database.set_setting("sheet_name", n_val)
         page.show_dialog(ft.SnackBar(ft.Text("Google Sheets configuration saved!"), bgcolor=ModernPalette.SUCCESS))
-        page.update()
+        on_navigate("settings")
 
     sheet_save_btn = ft.FilledButton(
-        "Save Google Sheet Link",
+        "Save Sheet Link",
         icon=ft.Icons.SAVE,
         style=ft.ButtonStyle(bgcolor=ModernPalette.PRIMARY, color=ft.Colors.WHITE),
         on_click=save_sheet_settings,
@@ -451,9 +451,10 @@ def build_settings_view(page: ft.Page, on_navigate, on_sync_request, on_logout=N
                 sheet_name_input,
                 ft.Row(
                     spacing=8,
+                    wrap=True,
                     controls=[
                         sheet_save_btn,
-                        *( [ft.OutlinedButton("Open Sheet", icon=ft.Icons.OPEN_IN_NEW, url=sheet_url)] if sheet_url else [] )
+                        *( [ft.OutlinedButton("Open Sheet in Browser", icon=ft.Icons.OPEN_IN_NEW, url=sheet_url)] if sheet_url else [] )
                     ]
                 ),
                 ft.Row(

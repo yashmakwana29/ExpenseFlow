@@ -95,7 +95,9 @@ class GoogleSheetsManager:
             self.client = gspread.authorize(creds)
 
             # Try to open existing spreadsheet by URL first, then title
-            sheet_target = database.get_setting("sheet_url", "").strip() or self.sheet_name.strip()
+            from config import DEFAULT_SETTINGS
+            default_url = DEFAULT_SETTINGS.get("sheet_url", "").strip()
+            sheet_target = database.get_setting("sheet_url", "").strip() or default_url or self.sheet_name.strip()
             self.spreadsheet = None
 
             if sheet_target.startswith("https://") or "docs.google.com/spreadsheets" in sheet_target:
@@ -103,28 +105,31 @@ class GoogleSheetsManager:
                     self.spreadsheet = self.client.open_by_url(sheet_target)
                 except Exception as ex:
                     ex_str = str(ex).lower()
-                    if "404" in ex_str or "not found" in ex_str:
-                        database.set_setting("sheet_url", "")
-                        return False, (
-                            "The previously linked Google Sheet was deleted or cannot be found (404).\n"
-                            "To link your new clean sheet:\n"
-                            "1. Create a sheet at https://sheets.new\n"
-                            f"2. Share with: {self.get_service_account_email()} (as Editor)\n"
-                            "3. Paste the new URL into Settings ➔ Google Spreadsheet URL."
-                        )
-                    return False, f"Could not open sheet by URL. Please check if shared with '{self.get_service_account_email()}': {ex}"
+                    if ("404" in ex_str or "not found" in ex_str) and default_url and sheet_target != default_url:
+                        try:
+                            self.spreadsheet = self.client.open_by_url(default_url)
+                        except Exception:
+                            pass
+                    if not self.spreadsheet:
+                        if "404" in ex_str or "not found" in ex_str:
+                            return False, (
+                                "The previously linked Google Sheet was deleted or cannot be found (404).\n"
+                                "To link your new clean sheet:\n"
+                                "1. Create a sheet at https://sheets.new\n"
+                                f"2. Share with: {self.get_service_account_email()} (as Editor)\n"
+                                "3. Paste the new URL into Settings ➔ Google Spreadsheet URL."
+                            )
+                        return False, f"Could not open sheet by URL. Please check if shared with '{self.get_service_account_email()}': {ex}"
             else:
                 try:
                     self.spreadsheet = self.client.open(sheet_target)
                 except gspread.exceptions.SpreadsheetNotFound:
                     # Check default URL fallback
-                    try:
-                        from config import DEFAULT_SETTINGS
-                        default_url = DEFAULT_SETTINGS.get("sheet_url", "")
-                        if default_url:
+                    if default_url:
+                        try:
                             self.spreadsheet = self.client.open_by_url(default_url)
-                    except Exception:
-                        pass
+                        except Exception:
+                            pass
 
                     if not self.spreadsheet:
                         # Try creating new one
@@ -178,10 +183,10 @@ class GoogleSheetsManager:
         # Ensure headers in Expenses_Log
         existing_headers = log_sheet.row_values(1)
         if not existing_headers:
-            log_sheet.update(range_name="A1:I1", values=[EXPENSES_HEADERS])
+            log_sheet.update(range_name="A1:J1", values=[EXPENSES_HEADERS])
             # Format header row: Dark Slate background (#1E293B), white bold text
             try:
-                log_sheet.format("A1:I1", {
+                log_sheet.format("A1:J1", {
                     "backgroundColor": {"red": 0.12, "green": 0.16, "blue": 0.23},
                     "textFormat": {"foregroundColor": {"red": 1.0, "green": 1.0, "blue": 1.0}, "bold": True},
                     "horizontalAlignment": "CENTER"
@@ -216,11 +221,11 @@ class GoogleSheetsManager:
             ["📊 MONTHLY EXPENSE SUMMARY REPORT", "", "", ""],
             ["Generated automatically by ExpenseFlow Mobile App", "", "", ""],
             ["Total All-Time Spend", "=IFERROR(SUM(Expenses_Log!E2:E), 0)", "Total Transactions", "=IFERROR(COUNT(Expenses_Log!E2:E), 0)"],
-            ["Average Spend / Txn", "=IFERROR(AVERAGE(Expenses_Log!E2:E), 0)", "This Month Spend", "=IFERROR(SUMIF(Expenses_Log!H2:H, TEXT(TODAY(), \"yyyy-mm\"), Expenses_Log!E2:E), 0)"],
+            ["Average Spend / Txn", "=IFERROR(AVERAGE(Expenses_Log!E2:E), 0)", "This Month Spend", "=IFERROR(SUMIF(Expenses_Log!I2:I, TEXT(TODAY(), \"yyyy-mm\"), Expenses_Log!E2:E), 0)"],
             ["", "", "", ""],
             ["Month (YYYY-MM)", "Total Spent", "Transactions", "Avg Spend / Txn"],
             # Dynamic QUERY formula that aggregates monthly data in real-time
-            ["=IFERROR(QUERY(Expenses_Log!A2:I, \"SELECT H, SUM(E), COUNT(E), AVG(E) WHERE H IS NOT NULL GROUP BY H ORDER BY H DESC LABEL H 'Month', SUM(E) 'Total', COUNT(E) 'Count', AVG(E) 'Avg'\", 0), \"No expenses recorded yet\")"]
+            ["=IFERROR(QUERY(Expenses_Log!A2:J, \"SELECT I, SUM(E), COUNT(E), AVG(E) WHERE I IS NOT NULL GROUP BY I ORDER BY I DESC LABEL I 'Month', SUM(E) 'Total', COUNT(E) 'Count', AVG(E) 'Avg'\", 0), \"No expenses recorded yet\")"]
         ]
         ws.update(range_name="A1:D7", values=content, value_input_option="USER_ENTERED")
         try:
@@ -242,7 +247,7 @@ class GoogleSheetsManager:
             ["Live automated breakdown from Expenses_Log", "", "", ""],
             ["", "", "", ""],
             ["Category", "Total Spent", "Transactions", "Avg Spend / Txn"],
-            ["=IFERROR(QUERY(Expenses_Log!A2:I, \"SELECT D, SUM(E), COUNT(E), AVG(E) WHERE D IS NOT NULL GROUP BY D ORDER BY SUM(E) DESC LABEL D 'Category', SUM(E) 'Total Spent', COUNT(E) 'Txn Count', AVG(E) 'Avg'\", 0), \"No data yet\")"]
+            ["=IFERROR(QUERY(Expenses_Log!A2:J, \"SELECT D, SUM(E), COUNT(E), AVG(E) WHERE D IS NOT NULL GROUP BY D ORDER BY SUM(E) DESC LABEL D 'Category', SUM(E) 'Total Spent', COUNT(E) 'Txn Count', AVG(E) 'Avg'\", 0), \"No data yet\")"]
         ]
         ws.update(range_name="A1:D5", values=content, value_input_option="USER_ENTERED")
         try:
@@ -264,7 +269,7 @@ class GoogleSheetsManager:
             ["Live payment analysis across UPI, Cards, and Cash", "", ""],
             ["", "", ""],
             ["Payment Mode", "Total Spent", "Transactions"],
-            ["=IFERROR(QUERY(Expenses_Log!A2:I, \"SELECT F, SUM(E), COUNT(E) WHERE F IS NOT NULL GROUP BY F ORDER BY SUM(E) DESC LABEL F 'Payment Mode', SUM(E) 'Total Spent', COUNT(E) 'Count'\", 0), \"No data yet\")"]
+            ["=IFERROR(QUERY(Expenses_Log!A2:J, \"SELECT F, SUM(E), COUNT(E) WHERE F IS NOT NULL GROUP BY F ORDER BY SUM(E) DESC LABEL F 'Payment Mode', SUM(E) 'Total Spent', COUNT(E) 'Count'\", 0), \"No data yet\")"]
         ]
         ws.update(range_name="A1:C5", values=content, value_input_option="USER_ENTERED")
         try:

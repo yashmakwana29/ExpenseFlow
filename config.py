@@ -227,14 +227,14 @@ CURRENCIES = ["₹", "$", "€", "£", "¥", "AED", "CAD", "AUD", "SGD"]
 
 # Default App Settings
 DEFAULT_SETTINGS = {
-    "sheet_name": "ExpenseFlow Tracker & Reports",
+    "sheet_name": "ExpenseFlow",
     "credentials_path": "credentials.json",
     "currency_symbol": "₹",
     "monthly_budget": "25000",
     "theme_mode": "dark",
     "auto_sync": "true",
     "last_sync_time": "",
-    "sheet_url": "",
+    "sheet_url": "https://docs.google.com/spreadsheets/d/1JJh-EnT3_zhf9dw6QGYdXLsWqzdPxXPqrKyJcvMOS1c",
 }
 
 # Theme Colors (Modern Dark / Neon accent palette)

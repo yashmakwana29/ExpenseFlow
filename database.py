@@ -368,6 +368,14 @@ def _init_mysql_db():
     for key, val in DEFAULT_SETTINGS.items():
         cursor.execute("INSERT IGNORE INTO settings (`key`, value) VALUES (?, ?)", (key, str(val)))
 
+    # Ensure empty sheet_url gets updated to active default
+    def_url = DEFAULT_SETTINGS.get("sheet_url", "")
+    if def_url:
+        cursor.execute("UPDATE settings SET value = ? WHERE `key` = 'sheet_url' AND (value = '' OR value IS NULL)", (def_url,))
+    def_name = DEFAULT_SETTINGS.get("sheet_name", "ExpenseFlow")
+    if def_name:
+        cursor.execute("UPDATE settings SET value = ? WHERE `key` = 'sheet_name' AND (value = '' OR value IS NULL OR value = 'ExpenseFlow Tracker & Reports')", (def_name,))
+
     # Populate default user (admin / admin123) if no users exist
     cursor.execute("SELECT COUNT(*) as count FROM users")
     if cursor.fetchone()["count"] == 0:
@@ -485,6 +493,14 @@ def _init_sqlite_db():
 
     for key, val in DEFAULT_SETTINGS.items():
         cursor.execute("INSERT OR IGNORE INTO settings (`key`, value) VALUES (?, ?)", (key, str(val)))
+
+    # Ensure empty sheet_url gets updated to active default
+    def_url = DEFAULT_SETTINGS.get("sheet_url", "")
+    if def_url:
+        cursor.execute("UPDATE settings SET value = ? WHERE `key` = 'sheet_url' AND (value = '' OR value IS NULL)", (def_url,))
+    def_name = DEFAULT_SETTINGS.get("sheet_name", "ExpenseFlow")
+    if def_name:
+        cursor.execute("UPDATE settings SET value = ? WHERE `key` = 'sheet_name' AND (value = '' OR value IS NULL OR value = 'ExpenseFlow Tracker & Reports')", (def_name,))
 
     cursor.execute("SELECT COUNT(*) as count FROM users")
     if cursor.fetchone()["count"] == 0:
@@ -978,7 +994,11 @@ def get_setting(key: str, default: str = "") -> str:
     cursor.execute("SELECT value FROM settings WHERE `key` = ?", (key,))
     row = cursor.fetchone()
     conn.close()
-    return row["value"] if row else default
+    val = row["value"] if row else ""
+    if not val:
+        from config import DEFAULT_SETTINGS
+        val = DEFAULT_SETTINGS.get(key, default)
+    return val
 
 def set_setting(key: str, value: str):
     conn = get_connection()
