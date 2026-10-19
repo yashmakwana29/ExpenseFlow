@@ -245,7 +245,7 @@ def build_settings_view(page: ft.Page, on_navigate, on_sync_request, on_logout=N
                 bgcolor=ModernPalette.DANGER if has_error else ModernPalette.SUCCESS,
             )
         )
-        page.update()
+        on_navigate("settings")
 
     mysql_status_card = ft.Container(
         bgcolor=ModernPalette.SURFACE_DARK,
